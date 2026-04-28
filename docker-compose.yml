@@ -1,0 +1,75 @@
+# =====================================================================
+# Backend Agenda Docente UCP — Compose standalone
+# Levanta solo PostgreSQL + Backend Express (sin frontend).
+# El frontend vive en su propio repositorio.
+#
+# PRIMER USO:        docker compose up --build -d
+# USOS POSTERIORES:  docker compose up -d
+# REINICIAR BD:      docker compose down -v && docker compose up --build -d
+#
+# Servicios expuestos:
+#   - Postgres   localhost:5432
+#   - Backend    http://localhost:4000/api
+# =====================================================================
+
+services:
+
+  db:
+    image: postgres:15-alpine
+    container_name: agendadocente-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1234Ucp*}
+      POSTGRES_DB: ${POSTGRES_DB:-agendadocentedb}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-agendadocentedb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agendadocente-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-4000}:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL:-postgres://admin:1234Ucp%2A@db:5432/agendadocentedb}
+      JWT_SECRET: ${JWT_SECRET:-UCP_JWT_Secret_2025_CambiarEnProduccion}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://localhost:8080}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-Agenda Docente UCP <no-reply@ucp.edu.co>}
+      UPLOADS_DIR: /var/app/uploads
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+    volumes:
+      - uploads-data:/var/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  db-data:
+    name: agendadocente-db-data
+  uploads-data:
+    name: agendadocente-uploads
