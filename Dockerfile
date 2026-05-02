@@ -29,4 +29,6 @@ RUN mkdir -p /var/app/uploads
 
 EXPOSE 4000
 
-CMD ["node", "dist/index.js"]
+#CMD ["node", "dist/index.js"]
+
+CMD node init-db.js && node dist/index.js
