@@ -19,14 +19,30 @@ async function runMigration() {
     console.log('✅ ¡Tablas creadas con éxito!');
     
     // --- NUEVA SECCIÓN PARA CREAR USUARIO ---
-    console.log('⏳ Creando usuario administrador de prueba...');
+    console.log('⏳ Creando usuario administrador...');
     const insertUserQuery = `
-      INSERT INTO users (cedula, nombre, email, password, rol) 
-      VALUES ('1234567890', 'Admin', 'admin@ucp.edu.co', '123456', 'admin')
-      ON CONFLICT (cedula) DO NOTHING;
+      INSERT INTO users (
+        first_name, 
+        first_last_name, 
+        cc, 
+        email, 
+        password, 
+        id_rol, 
+        id_state
+      ) 
+      VALUES (
+        'Admin', 
+        'UCP', 
+        '1234567890', 
+        'admin@ucp.edu.co', 
+        '123456', 
+        1, 
+        1
+      )
+      ON CONFLICT (cc) DO NOTHING;
     `;
     await pool.query(insertUserQuery);
-    console.log('✅ Usuario administrador listo (Cédula: 1234567890, Pass: 123456)');
+    console.log('✅ Usuario administrador creado con CC: 1234567890');
     // ----------------------------------------
 
   } catch (err) {
