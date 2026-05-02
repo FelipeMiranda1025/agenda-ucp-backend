@@ -14,12 +14,12 @@ async function runMigration() {
     const sqlPath = path.join(__dirname, 'migrations', '001_initial_schema.sql');
     const sql = fs.readFileSync(sqlPath, 'utf8');
 
-    console.log('⏳ Creando tablas en la base de datos...');
+    console.log('⏳ Creando tablas y triggers...');
     await pool.query(sql);
-    console.log('✅ ¡Tablas creadas con éxito!');
+    console.log('✅ Estructura de base de datos lista.');
     
-    // --- NUEVA SECCIÓN PARA CREAR USUARIO ---
-    console.log('⏳ Creando usuario administrador...');
+    // INSERT CORREGIDO CON TUS COLUMNAS REALES
+    console.log('⏳ Insertando usuario administrador...');
     const insertUserQuery = `
       INSERT INTO users (
         first_name, 
@@ -41,12 +41,13 @@ async function runMigration() {
       )
       ON CONFLICT (cc) DO NOTHING;
     `;
+    
     await pool.query(insertUserQuery);
-    console.log('✅ Usuario administrador creado con CC: 1234567890');
-    // ----------------------------------------
+    console.log('✅ Usuario administrador listo.');
+    console.log('👉 CC: 1234567890 | Pass: 123456');
 
   } catch (err) {
-    console.error('❌ Error ejecutando migración:', err);
+    console.error('❌ Error en la migración:', err.message);
   } finally {
     await pool.end();
   }
