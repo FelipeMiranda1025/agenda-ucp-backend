@@ -35,7 +35,7 @@ async function runMigration() {
         'UCP', 
         '1234567890', 
         'admin@ucp.edu.co', 
-        '12345678', 
+        '1234Ucp*', 
         1, 
         1
       )
