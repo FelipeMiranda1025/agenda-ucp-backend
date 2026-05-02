@@ -11,7 +11,6 @@ const pool = new Pool({
 
 async function runMigration() {
   try {
-    // Leemos el archivo que vimos en tu carpeta migrations
     const sqlPath = path.join(__dirname, 'migrations', '001_initial_schema.sql');
     const sql = fs.readFileSync(sqlPath, 'utf8');
 
@@ -19,8 +18,16 @@ async function runMigration() {
     await pool.query(sql);
     console.log('✅ ¡Tablas creadas con éxito!');
     
-    // Opcional: Insertar un usuario de prueba si no existe
-    // await pool.query("INSERT INTO users (cedula, password) VALUES ('1234567890', 'hash_aqui')");
+    // --- NUEVA SECCIÓN PARA CREAR USUARIO ---
+    console.log('⏳ Creando usuario administrador de prueba...');
+    const insertUserQuery = `
+      INSERT INTO users (cedula, nombre, email, password, rol) 
+      VALUES ('1234567890', 'Admin', 'admin@ucp.edu.co', '123456', 'admin')
+      ON CONFLICT (cedula) DO NOTHING;
+    `;
+    await pool.query(insertUserQuery);
+    console.log('✅ Usuario administrador listo (Cédula: 1234567890, Pass: 123456)');
+    // ----------------------------------------
 
   } catch (err) {
     console.error('❌ Error ejecutando migración:', err);
