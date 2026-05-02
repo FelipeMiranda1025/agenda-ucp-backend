@@ -25,6 +25,9 @@ RUN npm install --omit=dev --no-audit --no-fund
 
 COPY --from=builder /app/dist ./dist
 
+COPY init-db.js ./
+COPY migrations ./migrations
+
 RUN mkdir -p /var/app/uploads
 
 EXPOSE 4000
