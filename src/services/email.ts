@@ -1,129 +1,261 @@
+/**
+ * email.ts — Servicio de correo electrónico (Nodemailer)
+ * ─────────────────────────────────────────────────────────────
+ * Gestiona el transporter SMTP y las plantillas de correo.
+ *
+ * Seguridad implementada:
+ *  - escapeHtml() en todos los valores dinámicos del HTML para
+ *    prevenir XSS en clientes de correo que renderizan HTML.
+ *  - El transporter se reinicia si las variables de entorno cambian
+ *    (útil en recargas en caliente durante desarrollo).
+ *  - Timeout configurado para evitar que el servidor quede colgado
+ *    esperando respuesta del SMTP.
+ *  - El texto plano (fallback) no contiene HTML, útil para clientes
+ *    que solo muestran texto.
+ * ─────────────────────────────────────────────────────────────
+ */
+
 import nodemailer, { Transporter } from "nodemailer";
+import SMTPTransport from "nodemailer/lib/smtp-transport";
 
+// Caché del transporter + snapshot de la config con la que fue creado
 let transporter: Transporter | null = null;
+let cachedSmtpConfig: string | null = null;
 
+/**
+ * Construye una clave de caché a partir de las variables SMTP actuales.
+ * Si alguna cambia, se recreará el transporter.
+ */
+function getSmtpConfigKey(): string {
+  return [
+    process.env.SMTP_HOST,
+    process.env.SMTP_PORT,
+    process.env.SMTP_SECURE,
+    process.env.SMTP_USER,
+    process.env.SMTP_PASS,
+  ].join("|");
+}
+
+/**
+ * Devuelve (o crea) el transporter SMTP.
+ * Lo recrea si la configuración SMTP cambió desde la última vez
+ * (útil en desarrollo con nodemon/hot-reload).
+ */
 function getTransporter(): Transporter {
-  if (transporter) return transporter;
+  const currentConfig = getSmtpConfigKey();
+
+  // 1. Validar caché: si la configuración es la misma, retornamos el existente
+  if (transporter && cachedSmtpConfig === currentConfig) {
+    return transporter;
+  }
+
+  // 2. Limpieza: si existe un transporter previo (con otra config), lo cerramos
+  if (transporter) {
+    try {
+      (transporter as any).close?.();
+    } catch (e) {
+      // Ignorar errores al cerrar conexiones viejas
+    }
+    transporter = null;
+  }
+
   const port = Number(process.env.SMTP_PORT ?? 587);
+  const secure = process.env.SMTP_SECURE === "true" || port === 465;
+
+  // 3. Creación directa: aquí inyectamos la configuración con 'as any'
+  // Esto elimina el error de 'host', 'pool' y cualquier otro de la línea 64
   transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST ?? "smtp.gmail.com",
     port,
-    secure: process.env.SMTP_SECURE === "true" || port === 465,
+    secure,
     auth:
       process.env.SMTP_USER && process.env.SMTP_PASS
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
         : undefined,
-  });
+    connectionTimeout: 10_000,
+    socketTimeout: 15_000,
+    pool: false,
+  } as any);
+
+  // 4. Actualizar caché y retornar
+  cachedSmtpConfig = currentConfig;
   return transporter;
 }
 
-const FROM =
+/** Dirección "From" leída de las variables de entorno */
+const getFrom = (): string =>
   process.env.SMTP_FROM ?? '"Agenda Docente UCP" <no-reply@ucp.edu.co>';
 
+/**
+ * Escapa caracteres especiales de HTML para prevenir XSS en cuerpos de correo.
+ * Se aplica a todos los valores dinámicos antes de insertarlos en la plantilla.
+ */
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(/&/g,  "&amp;")
+    .replace(/</g,  "&lt;")
+    .replace(/>/g,  "&gt;")
+    .replace(/"/g,  "&quot;")
+    .replace(/'/g,  "&#39;");
+}
+
+// ─── Plantillas de correo ───────────────────────────────────────────────────
+
+/**
+ * Genera el cuerpo HTML del correo de contraseña temporal.
+ * Todos los valores dinámicos pasan por escapeHtml().
+ */
+function buildPasswordEmailHtml(safeName: string, safePwd: string): string {
+  return `<!doctype html>
+<html lang="es">
+  <body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+           style="background:#f4f6f9;padding:32px 0;">
+      <tr>
+        <td align="center">
+          <table width="600" cellpadding="0" cellspacing="0" role="presentation"
+                 style="background:#ffffff;border-radius:8px;overflow:hidden;
+                        box-shadow:0 2px 6px rgba(0,0,0,0.07);">
+
+            <!-- Encabezado institucional -->
+            <tr>
+              <td style="background:#0a4d8c;padding:24px 32px;
+                         color:#ffffff;font-size:18px;font-weight:bold;">
+                Agenda Docente &mdash; Universidad Cat&oacute;lica de Pereira
+              </td>
+            </tr>
+
+            <!-- Cuerpo -->
+            <tr>
+              <td style="padding:32px;">
+                <h2 style="margin:0 0 16px;font-size:20px;color:#0a4d8c;">
+                  Hola, ${safeName}
+                </h2>
+                <p style="margin:0 0 16px;line-height:1.6;">
+                  Recibimos una solicitud para restablecer tu contrase&ntilde;a en el
+                  <strong>Sistema de Agenda Docente</strong>. A continuaci&oacute;n
+                  encontrar&aacute;s tu nueva contrase&ntilde;a temporal.
+                </p>
+
+                <!-- Caja de contraseña destacada -->
+                <div style="margin:24px 0;padding:20px;background:#f3f4f6;
+                            border:1px solid #e5e7eb;border-radius:8px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#6b7280;
+                             text-transform:uppercase;letter-spacing:0.8px;">
+                    Tu nueva contrase&ntilde;a temporal
+                  </p>
+                  <p style="margin:0;font-family:'Courier New',Consolas,monospace;
+                             font-size:24px;font-weight:bold;color:#0a4d8c;
+                             letter-spacing:3px;word-break:break-all;">
+                    ${safePwd}
+                  </p>
+                </div>
+
+                <p style="margin:0 0 12px;line-height:1.6;">
+                  Ingresa al sistema con esta contrase&ntilde;a usando tu c&eacute;dula
+                  o correo institucional. Por seguridad,
+                  <strong>c&aacute;mbiala inmediatamente</strong> luego de iniciar sesi&oacute;n
+                  desde la opci&oacute;n <em>Cambiar Contrase&ntilde;a</em> en tu perfil.
+                </p>
+
+                <!-- Aviso de seguridad -->
+                <div style="margin:20px 0;padding:14px 16px;background:#fff7ed;
+                            border-left:4px solid #f97316;border-radius:4px;">
+                  <p style="margin:0;font-size:13px;color:#9a3412;line-height:1.5;">
+                    <strong>&#9888; Aviso de seguridad:</strong>
+                    Si t&uacute; <em>no</em> solicitaste este cambio, comunícate de inmediato
+                    con el &aacute;rea de soporte acad&eacute;mico para proteger tu cuenta.
+                  </p>
+                </div>
+
+                <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0;" />
+                <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">
+                  Sistema de Agenda Docente &middot; Universidad Cat&oacute;lica de Pereira
+                </p>
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 }
 
 /**
- * Envía la nueva contraseña temporal al docente en TEXTO PLANO dentro de un
- * correo HTML institucional UCP. La contraseña ya quedó actualizada (hasheada)
- * en la base de datos antes de invocar esta función.
+ * Genera el cuerpo en texto plano (fallback para clientes sin HTML).
+ * No contiene HTML. La contraseña va sin escapar (es texto plano).
+ */
+function buildPasswordEmailText(firstName: string, tempPassword: string): string {
+  return (
+    `Hola ${firstName || "Docente"},\n\n` +
+    `Recibimos una solicitud para restablecer tu contraseña en el Sistema de Agenda Docente UCP.\n\n` +
+    `Tu nueva contraseña temporal es:\n\n` +
+    `    ${tempPassword}\n\n` +
+    `Ingresa con esta contraseña usando tu cédula o correo institucional.\n` +
+    `Por seguridad, cámbiala inmediatamente luego de iniciar sesión.\n\n` +
+    `AVISO: Si tú no solicitaste este cambio, contacta al soporte académico de la UCP de inmediato.\n\n` +
+    `--\nSistema de Agenda Docente · Universidad Católica de Pereira`
+  );
+}
+
+// ─── Función pública ────────────────────────────────────────────────────────
+
+/**
+ * Envía la contraseña temporal al usuario en un correo HTML institucional.
+ *
+ * La contraseña ya debe haber sido actualizada (hasheada) en la BD
+ * antes de invocar esta función.
+ *
+ * @param to           Dirección de correo destino (ya validada)
+ * @param firstName    Nombre del usuario para personalizar el saludo
+ * @param tempPassword Contraseña temporal en texto plano
+ *
+ * @throws Error si el envío SMTP falla (el caller debe manejar el error)
  */
 export async function sendTemporaryPasswordEmail(
   to: string,
   firstName: string,
   tempPassword: string
 ): Promise<void> {
-  const safeName = escapeHtml(firstName?.trim() || "Docente");
-  const safePwd = escapeHtml(tempPassword);
+  // Sanitizar valores dinámicos para el HTML
+  const safeName = escapeHtml((firstName?.trim() || "Docente").slice(0, 100));
+  const safePwd  = escapeHtml(tempPassword);
 
-  const html = `
-  <!doctype html>
-  <html lang="es">
-    <body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
-      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f4f6f9;padding:32px 0;">
-        <tr>
-          <td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,0.05);">
-              <tr>
-                <td style="background:#0a4d8c;padding:24px 32px;color:#ffffff;font-size:18px;font-weight:bold;">
-                  Agenda Docente — Universidad Católica de Pereira
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:32px;">
-                  <h2 style="margin:0 0 16px;font-size:20px;color:#0a4d8c;">Hola, ${safeName}</h2>
-                  <p style="margin:0 0 16px;line-height:1.5;">
-                    Recibimos una solicitud para restablecer tu contraseña en el
-                    Sistema de Agenda Docente. A continuación encontrarás tu
-                    <strong>nueva contraseña temporal</strong>.
-                  </p>
+  const html = buildPasswordEmailHtml(safeName, safePwd);
+  const text = buildPasswordEmailText(firstName?.trim() || "Docente", tempPassword);
 
-                  <div style="margin:24px 0;padding:18px 20px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;text-align:center;">
-                    <p style="margin:0 0 8px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">
-                      Tu nueva contraseña
-                    </p>
-                    <p style="margin:0;font-family:'Courier New',Consolas,monospace;font-size:22px;font-weight:bold;color:#0a4d8c;letter-spacing:2px;word-break:break-all;">
-                      ${safePwd}
-                    </p>
-                  </div>
-
-                  <p style="margin:0 0 16px;line-height:1.5;">
-                    Inicia sesión con esta contraseña usando tu cédula o correo
-                    institucional. Por seguridad, te recomendamos
-                    <strong>cambiarla</strong> tan pronto ingreses al sistema.
-                  </p>
-
-                  <p style="margin:24px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">
-                    Si tú no solicitaste este cambio, comunícate de inmediato con
-                    el área de soporte académico para asegurar tu cuenta.
-                  </p>
-
-                  <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0;" />
-                  <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">
-                    Sistema de Agenda Docente · Universidad Católica de Pereira
-                  </p>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-  </html>`;
-
-  const text =
-    `Hola ${firstName || "Docente"},\n\n` +
-    `Recibimos una solicitud para restablecer tu contraseña en el Sistema ` +
-    `de Agenda Docente UCP.\n\n` +
-    `Tu nueva contraseña temporal es: ${tempPassword}\n\n` +
-    `Inicia sesión con esta contraseña y, por seguridad, cámbiala apenas ` +
-    `ingreses al sistema.\n\n` +
-    `Si tú no solicitaste este cambio, contacta al soporte académico de la UCP.`;
-
+  // Intentar envío; si falla, el error se propaga al caller (auth.ts)
   await getTransporter().sendMail({
-    from: FROM,
+    from:    getFrom(),
     to,
     subject: "Nueva contraseña temporal — Agenda Docente UCP",
     text,
     html,
+    // Cabeceras de seguridad adicionales
+    headers: {
+      "X-Mailer":           "AgendaDocente-UCP/1.0",
+      "X-Priority":         "1",                         // alta prioridad
+      "Auto-Submitted":     "auto-generated",            // indica correo automático
+    },
   });
 }
 
-/** Verifica conectividad SMTP (no bloquea el arranque si falla) */
+// ─── Función de diagnóstico ─────────────────────────────────────────────────
+
+/**
+ * Verifica la conectividad SMTP al arrancar el servidor.
+ * No bloquea el inicio si falla — solo emite una advertencia.
+ */
 export async function verifyEmailConnection(): Promise<void> {
   try {
     await getTransporter().verify();
-    console.log("✅ Conexión SMTP verificada correctamente");
+    console.log("✅  Conexión SMTP verificada correctamente");
   } catch (err) {
     console.warn(
-      "⚠️  No se pudo verificar SMTP (el servidor arrancó igual):",
-      err
+      "⚠️   No se pudo verificar SMTP (el servidor arrancó de igual forma):",
+      err instanceof Error ? err.message : err
     );
   }
 }
