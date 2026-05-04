@@ -15,27 +15,27 @@ RUN npm run build
 
 # ---- Etapa 2: Runtime (Producción) ----
 FROM node:20-alpine
-# Definir variables de entorno antes de cualquier operación
+# Definir variables de entorno
 ENV NODE_ENV=production
 ENV PORT=4000
 
 WORKDIR /app
 
-# Instalación de utilidades necesarias y limpieza de caché de apk
+# Instalación de utilidades necesarias
 RUN apk add --no-cache wget
 
 # Copiar solo lo necesario de la etapa anterior
 COPY --from=builder /app/package*.json ./
-# Instalación limpia de dependencias de producción
 RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY --from=builder /app/dist ./dist
 
-# Solución al error previo: aseguramos existencia de archivos/carpetas
+# --- CORRECCIÓN DEL CONFLICTO ---
+# Aseguramos existencia de archivos/carpetas y copiamos migraciones si existen
 RUN touch init-db.js && mkdir -p migrations /var/app/uploads
+COPY migrations ./migrations
 
 # --- SEGURIDAD: Usuario no root ---
-# Cambiamos la propiedad de la carpeta de la app al usuario 'node' (ya existe en la imagen alpine)
 RUN chown -R node:node /app /var/app/uploads
 
 # A partir de aquí, nada se ejecuta como root

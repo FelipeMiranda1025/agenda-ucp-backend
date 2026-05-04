@@ -80,7 +80,8 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 const server = app.listen(PORT, () => {
-  console.log(`✅ Backend UCP escuchando en http://localhost:${PORT}/api`);
+  /*console.log(`✅ Backend UCP escuchando en http://localhost:${PORT}/api`);*/
+  console.log(`✅ Backend UCP escuchando en http://0.0.0.0:${PORT}/api`);
   const dbUrl = process.env.DATABASE_URL?.replace(/:([^:@]+)@/, ":****@");
   console.log(`   DB: ${dbUrl}`);
   pingDb().then((ok) => {
