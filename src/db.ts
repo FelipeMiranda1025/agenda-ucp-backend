@@ -3,7 +3,7 @@ import pg from "pg";
 const { Pool, types } = pg;
 
 // BIGINT (oid 20) → number cuando sea seguro
-types.setTypeParser(20, (val: string) => parseInt(val, 10));
+//types.setTypeParser(20, (val: string) => parseInt(val, 10));
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -37,6 +37,7 @@ export async function queryOne<T = any>(
   return rows[0] ?? null;
 }
 
+/*
 export async function pingDb(): Promise<boolean> {
   try {
     const result = await query<{ ok: number }>("SELECT 1 AS ok");
@@ -45,7 +46,22 @@ export async function pingDb(): Promise<boolean> {
     console.error("[db] ping falló:", err);
     return false;
   }
+}*/
+
+export async function pingDb(): Promise<boolean> {
+  try {
+    const result = await query<{ ok: number, db: string, host: string }>(
+      "SELECT 1 AS ok, current_database() as db, inet_server_addr() as host"
+    );
+    console.log(`[db] Conectado a la base de datos: ${result[0]?.db} en el host: ${result[0]?.host}`);
+    return result[0]?.ok === 1;
+  } catch (err) {
+    console.error("[db] ping falló:", err);
+    return false;
+  }
 }
+
+
 
 export async function closeDb(): Promise<void> {
   await pool.end();
