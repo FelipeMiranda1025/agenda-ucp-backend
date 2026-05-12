@@ -1,9 +1,51 @@
-import { Router, Response } from "express";
+import { Router, Request, Response } from "express";
 import { query, queryOne } from "../db";
 import { requireAuth, AuthRequest } from "../middleware/auth";
+import multer from "multer";
+import { extractTextFromPDF } from "../services/pdfParser";
+import { extractRulesFromText } from "../utils/ruleExtractor";
 
 const router = Router();
 router.use(requireAuth);
+
+// Configuración de multer para subida de PDFs
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, process.env.UPLOADS_DIR || "/var/app/uploads"),
+  filename: (req, file, cb) => cb(null, `lineamientos_${Date.now()}.pdf`),
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "application/pdf") cb(null, true);
+    else cb(new Error("Solo se admiten archivos PDF"));
+  },
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+/**
+ * POST /api/lineamientos-documents/upload
+ * Sube un PDF, extrae texto y reglas automáticamente.
+ */
+router.post("/upload", upload.single("pdf"), async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No se envió ningún archivo PDF" });
+
+    const text = await extractTextFromPDF(req.file.path);
+    const rules = extractRulesFromText(text);
+
+    res.json({
+      success: true,
+      archivo: req.file.filename,
+      texto_preview: text.substring(0, 500) + "...",
+      reglas_encontradas: rules.length,
+      reglas: rules,
+    });
+  } catch (error: any) {
+    console.error("[lineamientos-documents:upload]", error);
+    res.status(500).json({ message: error.message || "Error al procesar el PDF" });
+  }
+});
 
 /**
  * GET /api/lineamientos-documents
@@ -66,7 +108,7 @@ router.post("/", async (req: AuthRequest, res: Response) => {
  */
 router.put("/:id", async (req: AuthRequest, res: Response) => {
   const { applied, applied_at, applied_by } = req.body ?? {};
-  
+
   try {
     const row = await queryOne(
       `UPDATE public.lineamientos_documents

@@ -22,6 +22,7 @@ import { requestLogger } from "./middleware/logger";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { closeDb, pingDb } from "./db";
 
+
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "4000", 10);
 
