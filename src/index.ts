@@ -16,6 +16,7 @@ import docenteConfigRouter from "./routes/docenteConfig";
 import uploadRouter from "./routes/upload";
 import recommendationRulesRouter from "./routes/recommendationRules";
 import systemSettingsRouter from "./routes/systemSettings";
+import lineamientosDocumentsRouter from "./routes/lineamientosDocuments";
 
 import { requestLogger } from "./middleware/logger";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
@@ -67,6 +68,7 @@ app.use("/api/docente-config", docenteConfigRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/recommendation-rules", recommendationRulesRouter);
 app.use("/api/system-settings", systemSettingsRouter);
+app.use("/api/lineamientos-documents", lineamientosDocumentsRouter);
 
 app.get("/api", (_req, res) => {
   res.json({
