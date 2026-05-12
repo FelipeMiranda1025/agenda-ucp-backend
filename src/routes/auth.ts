@@ -362,21 +362,16 @@ router.post(
           user.first_name ?? "",
           tempPassword
         );
+        console.info("[forgot-password] Contraseña temporal enviada a userId:", user.id);
       } catch (mailErr) {
-        // Error de correo: loguear con detalle pero sin exponer al cliente
-        console.error("[forgot-password] Error enviando correo:", {
+        // Error de correo: la contraseña ya se actualizó, solo registramos
+        console.error("[forgot-password] Error enviando correo (contraseña ya actualizada):", {
           userId: user.id,
           error: mailErr instanceof Error ? mailErr.message : mailErr,
         });
-        return res.status(500).json({
-          message:
-            "No se pudo enviar el correo. Verifique la configuración SMTP o intente nuevamente.",
-        });
       }
 
-      console.info("[forgot-password] Contraseña temporal enviada a userId:", user.id);
-
-      // Respuesta de éxito (mismo mensaje que el caso "no encontrado")
+      // Respuesta de éxito siempre (la contraseña ya se actualizó)
       return res.json({
         message: "Si el identificador existe, recibirás las instrucciones al correo registrado.",
       });
