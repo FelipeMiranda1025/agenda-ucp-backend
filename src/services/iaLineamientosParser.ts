@@ -3,7 +3,7 @@ import { extractTextFromPDF } from "./pdfParser";
 
 // Inicializar el cliente de Gemini con la API key desde variables de entorno
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // o "gemini-1.5-pro"
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
 // Interfaz que define la estructura esperada de los lineamientos
 export interface LineamientosData {
