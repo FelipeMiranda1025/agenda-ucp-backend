@@ -29,11 +29,8 @@ COPY --from=builder /app/package*.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY --from=builder /app/dist ./dist
-
-# --- CORRECCIÓN DEL CONFLICTO ---
-# Aseguramos existencia de archivos/carpetas y copiamos migraciones si existen
-RUN touch init-db.js && mkdir -p migrations /var/app/uploads
 COPY migrations ./migrations
+RUN mkdir -p /var/app/uploads
 
 # --- SEGURIDAD: Usuario no root ---
 RUN chown -R node:node /app /var/app/uploads
