@@ -158,8 +158,17 @@ router.get("/", async (req: AuthRequest, res: Response) => {
     sql += ` ORDER BY av.updated_at DESC, av.created_at DESC`;
     return res.json(await query(sql, params));
   } catch (e) {
-    console.error(e);
-    return res.status(500).json({ message: "Error obteniendo agenda views" });
+    const err = e as { message?: string; code?: string };
+    console.error("[agenda-views:list]", e);
+    const missingColumn =
+      err?.code === "42703" ||
+      String(err?.message ?? "").includes("pending_reviewer_rol");
+    return res.status(500).json({
+      message: missingColumn
+        ? "Falta migración de base de datos (pending_reviewer_rol). Ejecute npm run db:migrate en el servidor."
+        : "Error obteniendo agenda views",
+      error: err?.message,
+    });
   }
 });
 
