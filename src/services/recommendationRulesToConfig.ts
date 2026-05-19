@@ -7,7 +7,8 @@ type RuleRow = {
   subjects: number;
 };
 
-function defaultConfig(): LineamientosData {
+/** Valores por defecto UCP cuando aún no hay PDF importado (p. ej. Render recién desplegado). */
+export function getDefaultLineamientosConfig(): LineamientosData {
   return {
     version: "manual-edicion",
     horasSemestre: 920,
@@ -47,7 +48,7 @@ function defaultConfig(): LineamientosData {
  * Actualiza lineamientos_activos a partir de recommendation_rules (edición manual).
  */
 export async function syncActiveLineamientosFromRecommendationRules(): Promise<LineamientosData> {
-  const base = (await getActiveLineamientos()) ?? defaultConfig();
+  const base = (await getActiveLineamientos()) ?? getDefaultLineamientosConfig();
   const registro = { ...(base.registroHorasSemanales ?? {}) };
 
   const rows = await query<RuleRow>(

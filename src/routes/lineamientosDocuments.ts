@@ -8,7 +8,10 @@ import path from "path";
 import { interpretLineamientosWithGemini } from "../services/iaLineamientosParser";
 import { transformToExtractedRules } from "../services/ruleTransformer";
 import { saveLineamientosConfig, getActiveLineamientos } from "../services/lineamientosConfigService";
-import { syncActiveLineamientosFromRecommendationRules } from "../services/recommendationRulesToConfig";
+import {
+  getDefaultLineamientosConfig,
+  syncActiveLineamientosFromRecommendationRules,
+} from "../services/recommendationRulesToConfig";
 import { applyLineamientosToSystem, applyCatalogsFromLineamientos } from "../services/lineamientosApplierService";
 import {
   previewPendingFromProposedRules,
@@ -243,18 +246,17 @@ router.put("/:id", requireAuth, requireVicerrector, async (req: AuthRequest, res
 
 /**
  * GET /api/lineamientos-documents/active
- * Devuelve la configuración activa actual (desde system_settings) en formato ExtractedRule[]. Es PÚBLICA.
+ * Devuelve la configuración activa completa (system_settings). Es pública.
+ * Si no hay PDF importado aún, responde con los valores por defecto UCP (200, no 404).
  */
-router.get("/active", async (req: AuthRequest, res: Response) => {
+router.get("/active", async (_req: AuthRequest, res: Response) => {
   try {
-    const config = await getActiveLineamientos();
-    if (!config) {
-      return res.status(404).json({ message: "No hay lineamientos activos cargados" });
-    }
+    const stored = await getActiveLineamientos();
+    const config = stored ?? getDefaultLineamientosConfig();
     const rules = transformToExtractedRules(config);
     return res.json({
+      ...config,
       rules_extracted: rules,
-      version: config.version
     });
   } catch (err) {
     console.error("[lineamientos-documents:active]", err);
