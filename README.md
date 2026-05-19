@@ -2,7 +2,7 @@
 
 API REST para el Sistema de Agenda Docente de la Universidad Católica de Pereira.
 
-**Stack:** Node.js 20 · Express 4 · TypeScript 5 · PostgreSQL 15 · JWT · Multer · Nodemailer
+**Stack:** Node.js 20 · Express 4 · TypeScript 5 · PostgreSQL 15 · JWT · Multer · Nodemailer · Google Gemini (lineamientos PDF)
 
 > El frontend vive en un repositorio separado: `agenda-ucp-frontend`.
 
@@ -60,6 +60,7 @@ Ver `.env.example` para la lista completa. Las críticas:
 | `FRONTEND_URL`  | URL pública del frontend (links de recuperación)     |
 | `UPLOADS_DIR`   | Carpeta de uploads de multer                         |
 | `SMTP_*`        | Credenciales SMTP para correos transaccionales       |
+| `GEMINI_API_KEY`| API key de Google Gemini (`gemini-1.5-flash` en `/lineamientos-documents/upload`) |
 
 ---
 

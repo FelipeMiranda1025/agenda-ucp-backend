@@ -1,7 +1,12 @@
+/**
+ * Interpretación de lineamientos UCP desde PDF.
+ * Modelo: Google Gemini 1.5 Flash (@google/generative-ai).
+ * Requiere GEMINI_API_KEY. Si falla la API, usa fallbackExtract() (regex).
+ */
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { extractTextFromPDF } from "./pdfParser";
 
-// Initialize Gemini client
+const GEMINI_MODEL = "gemini-1.5-flash";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 // Helper: fallback extraction using regex patterns
@@ -240,9 +245,9 @@ export async function interpretLineamientosWithGemini(filePath: string): Promise
   }
 
   try {
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      generationConfig: { responseMimeType: "application/json" }
+    const model = genAI.getGenerativeModel({
+      model: GEMINI_MODEL,
+      generationConfig: { responseMimeType: "application/json" },
     });
 
     const result = await model.generateContent(`${PROMPT}\n\nTexto del documento:\n${rawText}`);

@@ -100,7 +100,8 @@ router.post(
 );
 
 // ================================================================
-// EXTRACCIÓN DE REGLAS CON IA (Gemini + fallback Regex)
+// EXTRACCIÓN DE REGLAS CON IA (Gemini 2.5 Flash REST + fallback regex)
+// Flujo principal de lineamientos: ver lineamientosDocuments.ts + iaLineamientosParser.ts (gemini-1.5-flash)
 // ================================================================
 
 async function extractRulesWithAI(text: string): Promise<{ rules: any[]; summary: string }> {

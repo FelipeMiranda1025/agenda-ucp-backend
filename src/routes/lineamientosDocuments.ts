@@ -36,7 +36,7 @@ if (!fs.existsSync(path.resolve(process.cwd(), process.env.UPLOADS_DIR || "uploa
 
 /**
  * POST /api/lineamientos-documents/upload
- * Sube un PDF, lo interpreta con Groq (IA), extrae reglas y guarda configuración. Requiere auth.
+ * Sube un PDF, lo interpreta con Google Gemini (gemini-1.5-flash), extrae reglas y guarda configuración. Requiere auth.
  */
 router.post("/upload", requireAuth, requireVicerrector, upload.single("pdf"), async (req: AuthRequest, res: Response) => {
   try {
@@ -44,7 +44,7 @@ router.post("/upload", requireAuth, requireVicerrector, upload.single("pdf"), as
       return res.status(400).json({ message: "No se envió ningún archivo PDF" });
     }
 
-    // 1. Interpretar el PDF con Groq (IA)
+    // 1. Interpretar el PDF con Gemini (ver iaLineamientosParser.ts; fallback regex si falla)
     const newConfig = await interpretLineamientosWithGemini(req.file.path);
     console.log("Configuración extraída por IA:", JSON.stringify(newConfig, null, 2));
 
