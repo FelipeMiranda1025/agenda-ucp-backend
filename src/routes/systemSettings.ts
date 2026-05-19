@@ -3,7 +3,6 @@ import { query, queryOne } from "../db";
 import { requireAuth, AuthRequest } from "../middleware/auth";
 
 const router = Router();
-router.use(requireAuth);
 
 /**
  * GET /api/system-settings
@@ -39,9 +38,9 @@ router.get("/:key", async (req: AuthRequest, res: Response) => {
 /**
  * PUT /api/system-settings/:key
  * Body: { value: jsonb, updated_by?: string }
- * Upsert por la PK `key`.
+ * Upsert por la PK `key`. Requiere autenticación.
  */
-router.put("/:key", async (req: AuthRequest, res: Response) => {
+router.put("/:key", requireAuth, async (req: AuthRequest, res: Response) => {
   const { value, updated_by = null } = req.body ?? {};
   if (value === undefined) {
     return res.status(400).json({ message: "El campo 'value' es requerido" });

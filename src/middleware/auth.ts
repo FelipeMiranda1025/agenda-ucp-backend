@@ -39,3 +39,20 @@ export function requireAuth(
     res.status(401).json({ message: "Token inválido o expirado" });
   }
 }
+
+/** Solo vicerrectoría académica (rol 4) puede cargar lineamientos oficiales. */
+export function requireVicerrector(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): void {
+  if (!req.user) {
+    res.status(401).json({ message: "No autenticado" });
+    return;
+  }
+  if (req.user.rolId !== 4) {
+    res.status(403).json({ message: "Solo el vicerrector académico puede gestionar lineamientos" });
+    return;
+  }
+  next();
+}

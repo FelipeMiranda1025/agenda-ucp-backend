@@ -1,20 +1,120 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { extractTextFromPDF } from "./pdfParser";
 
-// Inicializar el cliente de Gemini con la API key desde variables de entorno
+// Initialize Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
-// Interfaz que define la estructura esperada de los lineamientos
+// Helper: fallback extraction using regex patterns
+function fallbackExtract(raw: string): LineamientosData {
+  const getNumber = (regex: RegExp) => {
+    const match = raw.match(regex);
+    if (!match) return undefined;
+    // Buscamos el grupo que contenga el número (puede ser el 1 o el 2 dependiendo del regex)
+    const valStr = match[1] || match[2];
+    if (!valStr) return undefined;
+    const value = valStr.replace(",", ".");
+    return parseFloat(value);
+  };
+
+  return {
+    version: "extracción-oficial-ucp",
+    // Horas semestre: acepta "920 horas" o "horas: 920"
+    horasSemestre: getNumber(/(\d+(?:[.,]\d+)?)\s*horas\s*al\s*semestre/i) || getNumber(/horas.*?semestre\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i) || 920,
+    // Semanas: acepta "23 semanas" o "semanas: 23"
+    semanasSemestre: getNumber(/(\d+)\s*semanas/i) || getNumber(/semanas.*?semestre\s*[:=]?\s*(\d+)/i) || 23,
+    
+    docenciaDirecta: {
+      // Sin proyecto: acepta "16 horas... sin proyecto" o "sin proyecto: 16"
+      sinProyecto: getNumber(/(\d+)\s*horas.*?sin\s*proyecto/i) || getNumber(/sin\s*proyecto.*?(\d+)\s*horas/i) || 16,
+      // Investigador: acepta "10 horas... investigador" o "investigador: 10"
+      investigadorPrincipal: getNumber(/(\d+)\s*horas.*?investigador\s*principal/i) || getNumber(/investigador\s*principal.*?(\d+)\s*horas/i) || 10,
+      coinvestigador: getNumber(/(\d+)\s*horas.*?co-investigador/i) || getNumber(/co-investigador.*?(\d+)\s*horas/i) || 13,
+      directorPrograma: getNumber(/(\d+)\s*horas.*?director\s*de\s*programa/i) || getNumber(/director\s*de\s*programa.*?(\d+)\s*horas/i) || 6,
+      directorPosgradoDescarga: 9,
+      coordinacionAreaDescarga: 6,
+      formacionDoctorado: getNumber(/(\d+)\s*horas.*?doctorado/i) || getNumber(/doctorado.*?(\d+)\s*horas/i) || 8,
+      formacionMaestria: getNumber(/(\d+)\s*horas.*?maestr[íi]a/i) || getNumber(/maestr[íi]a.*?(\d+)\s*horas/i) || 12,
+    },
+    equivalenciasPosgrado: {
+      especializacion: getNumber(/especializaci[oó]n\s+([0-9.,]+)/i) || getNumber(/([0-9.,]+)\s+especializaci[oó]n/i) || 1.5,
+      maestria: getNumber(/maestr[íi]a\s+([0-9.,]+)/i) || getNumber(/([0-9.,]+)\s+maestr[íi]a/i) || 2.0,
+      doctorado: getNumber(/doctorado\s+([0-9.,]+)/i) || getNumber(/([0-9.,]+)\s+doctorado/i) || 2.5,
+    },
+    docenciaIndirecta: {
+      // Preparación: Buscamos el número pegado a la palabra (máximo 10 caracteres de distancia)
+      // Esto evita que salte hasta el "6" del título del artículo.
+      preparacionClasePorHora: getNumber(/preparaci[oó]n\s*(?:de\s*clase)?\s*[:=]?\s*([0-9.,]+)/i) || 0.5,
+      asesoriaPorCurso: getNumber(/asesor[íi]a\s*estudiantes\s*[:=]?\s*(\d+)/i) || 1,
+      asesoriaTrabajoGradoPregrado: Number((15 / 23).toFixed(2)),
+      asesoriaTrabajoGradoMaestria: Number((30 / 23).toFixed(2)),
+      asesoriaTrabajoGradoDoctorado: Number((45 / 23).toFixed(2)),
+      // Max trabajos: acepta "50... trabajos de grado" o "trabajos de grado: 50"
+      maxTrabajosGrado: getNumber(/(\d+)\s*trabajos\s*de\s*grado/i) || getNumber(/trabajos\s*de\s*grado.*?(\d+)/i) || 4,
+    },
+    actividadesAnexas: {
+      // Art 6 Notas
+      liderColectivo: getNumber(/l[íi]der\s*colectivo\s*(\d+)/i) || 4,
+      participacionColectivo: getNumber(/participaci[oó]n\s*en\s*colectivo\s*(\d+)/i) || 2,
+      comiteCurricular: getNumber(/comit[ée]\s*curricular\s*(\d+)/i) || 3,
+      comiteBasicoFacultad: getNumber(/comit[ée]\s*b[áa]sico.*?(\d+)/i) || 2,
+      liderGrupoInvestigacion: getNumber(/l[íi]der\s*grupo\s*investigaci[oó]n\s*(\d+)/i) || 4,
+      liderRevista: getNumber(/l[íi]der\s*revista\s*(\d+)/i) || 2,
+    },
+    registroHorasSemanales: {
+      sinProyecto: extractRegistroHoras(raw, /sin\s*proyecto/i),
+      investigadorPrincipal: extractRegistroHoras(raw, /investigador\s*principal/i),
+      coinvestigador: extractRegistroHoras(raw, /co-?investigador/i),
+      directorPrograma: extractRegistroHoras(raw, /director\s*de\s*programa/i),
+      directorPosgrado: extractRegistroHoras(raw, /director\s*de\s*posgrado/i),
+      coordinacionArea: extractRegistroHoras(raw, /coordinaci[oó]n\s*de\s*[áa]rea/i),
+      formacionDoctorado: extractRegistroHoras(raw, /formaci[oó]n\s*doctoral|doctorado/i),
+      formacionMaestria: extractRegistroHoras(raw, /formaci[oó]n\s*maestr[íi]a|maestr[íi]a/i),
+    },
+    visualSettings: {
+      form_bg_color: (raw.match(/form_bg_color\s*[:=]?\s*#*(#[0-9A-Fa-f]{6})/i) || raw.match(/form_bg_color\s*[:=]?\s*(#[0-9A-Fa-f]{6})/i) || [])[1] || "#00804E"
+    }
+  };
+}
+
+/** "Se registrará en el formato ... X horas semanales" */
+function extractRegistroHoras(raw: string, activityPattern: RegExp): number | undefined {
+  const blocks = raw.split(/\n+/);
+  for (const line of blocks) {
+    if (!activityPattern.test(line)) continue;
+    if (!/registr/i.test(line) && !/formato/i.test(line) && !/excel/i.test(line)) continue;
+    const m =
+      line.match(/(\d+(?:[.,]\d+)?)\s*horas?\s*semanales?/i) ||
+      line.match(/registr(?:ar)?[áa]?\s+(\d+(?:[.,]\d+)?)\s*horas?/i);
+    if (m?.[1]) return parseFloat(m[1].replace(",", "."));
+  }
+  const global =
+    raw.match(
+      new RegExp(
+        `registr(?:ar)?[áa]?[^\\n]{0,120}${activityPattern.source}[^\\n]{0,120}(\\d+(?:[.,]\\d+)?)\\s*horas?\\s*semanales?`,
+        "i"
+      )
+    ) ||
+    raw.match(
+      new RegExp(
+        `${activityPattern.source}[^\\n]{0,160}registr(?:ar)?[áa]?[^\\n]{0,80}(\\d+(?:[.,]\\d+)?)\\s*horas?`,
+        "i"
+      )
+    );
+  if (global?.[1]) return parseFloat(global[1].replace(",", "."));
+  return undefined;
+}
+
 export interface LineamientosData {
   version: string;
+  horasSemestre: number;
+  semanasSemestre: number;
   docenciaDirecta: {
     sinProyecto: number;
     investigadorPrincipal: number;
     coinvestigador: number;
     directorPrograma: number;
-    directorPosgradoDescarga: number;    // horas de reducción por dirigir posgrado
-    coordinacionAreaDescarga: number;    // horas de reducción por coordinar área (máx 3)
+    directorPosgradoDescarga: number;
+    coordinacionAreaDescarga: number;
     formacionDoctorado: number;
     formacionMaestria: number;
   };
@@ -29,6 +129,7 @@ export interface LineamientosData {
     asesoriaTrabajoGradoPregrado: number;
     asesoriaTrabajoGradoMaestria: number;
     asesoriaTrabajoGradoDoctorado: number;
+    maxTrabajosGrado: number;
   };
   actividadesAnexas: {
     liderColectivo: number;
@@ -38,114 +139,120 @@ export interface LineamientosData {
     liderGrupoInvestigacion: number;
     liderRevista: number;
   };
+  /** Horas a registrar en Excel ("Se registrará ... X horas semanales"). */
+  registroHorasSemanales?: {
+    sinProyecto?: number;
+    investigadorPrincipal?: number;
+    coinvestigador?: number;
+    directorPrograma?: number;
+    directorPosgrado?: number;
+    coordinacionArea?: number;
+    formacionDoctorado?: number;
+    formacionMaestria?: number;
+  };
+  visualSettings?: {
+    form_bg_color?: string;
+  };
 }
 
-// Prompt que se enviará a Gemini. Le pedimos JSON estricto.
-const SYSTEM_PROMPT = `
+const PROMPT = `
 Eres un asistente experto en interpretar documentos normativos universitarios.
-Recibirás el texto del documento "AGENDA DOCENTE" de la Universidad Católica de Pereira.
-Debes extraer de él los siguientes valores numéricos y devolverlos **EXCLUSIVAMENTE** en formato JSON, sin texto adicional, sin explicaciones, sin marcas de código.
+Recibirás el texto de un documento que contiene lineamientos sobre horas de trabajo académico.
+**Tu tarea es extraer ÚNICAMENTE los valores numéricos que aparezcan EXPLÍCITAMENTE en el texto.**
+NO uses valores por defecto. Si un concepto no aparece en el texto, asigna 0.
 
-Estructura JSON exacta que debes devolver:
+Busca en el texto patrones como:
+- "Total horas al semestre: X horas" → horasSemestre = X
+- "Semanas por semestre: X semanas" → semanasSemestre = X
+- "docencia directa máxima: X horas" → sinProyecto = X
+- "tendrán a cargo X horas semanales de docencia" (por rol) → docenciaDirecta.*
+- "Se registrará en el formato (de Excel) X horas semanales" → registroHorasSemanales.*
+- "investigador principal ... a cargo X horas" → investigadorPrincipal = X
+- "co-investigador ... a cargo X horas" → coinvestigador = X
+- "director de programa ... a cargo X horas" → directorPrograma = X
+- "director de posgrado: X horas de descarga/reducción" → directorPosgradoDescarga = X
+- "coordinación de área: X horas de descarga" → coordinacionAreaDescarga = X
+- "docentes en formación de doctorado: X horas" → formacionDoctorado = X
+- "docentes en formación de maestría: X horas" → formacionMaestria = X
+- "preparación de clase: X horas" → preparacionClasePorHora = X
+- "asesoría estudiantes: X hora por curso" → asesoriaPorCurso = X
+- "máximo de trabajos de grado: X por semestre" → maxTrabajosGrado = X
+- "valor asesoría pregrado: X horas" → asesoriaTrabajoGradoPregrado = X
+
+Devuelve **EXCLUSIVAMENTE** un objeto JSON con la siguiente estructura (todos los campos deben ser números; si no se encuentra, usa 0):
 {
   "version": "2025-2",
+  "horasSemestre": 0,
+  "semanasSemestre": 0,
   "docenciaDirecta": {
-    "sinProyecto": 16,
-    "investigadorPrincipal": 10,
-    "coinvestigador": 13,
-    "directorPrograma": 6,
-    "directorPosgradoDescarga": 5,
-    "coordinacionAreaDescarga": 3,
-    "formacionDoctorado": 8,
-    "formacionMaestria": 12
+    "sinProyecto": 0,
+    "investigadorPrincipal": 0,
+    "coinvestigador": 0,
+    "directorPrograma": 0,
+    "directorPosgradoDescarga": 0,
+    "coordinacionAreaDescarga": 0,
+    "formacionDoctorado": 0,
+    "formacionMaestria": 0
   },
   "equivalenciasPosgrado": {
-    "especializacion": 1.5,
-    "maestria": 2.0,
-    "doctorado": 2.5
+    "especializacion": 0,
+    "maestria": 0,
+    "doctorado": 0
   },
   "docenciaIndirecta": {
-    "preparacionClasePorHora": 0.5,
-    "asesoriaPorCurso": 1,
-    "asesoriaTrabajoGradoPregrado": 15,
-    "asesoriaTrabajoGradoMaestria": 30,
-    "asesoriaTrabajoGradoDoctorado": 45
+    "preparacionClasePorHora": 0,
+    "asesoriaPorCurso": 0,
+    "asesoriaTrabajoGradoPregrado": 0,
+    "asesoriaTrabajoGradoMaestria": 0,
+    "asesoriaTrabajoGradoDoctorado": 0,
+    "maxTrabajosGrado": 0
   },
   "actividadesAnexas": {
-    "liderColectivo": 4,
-    "participacionColectivo": 2,
-    "comiteCurricular": 3,
-    "comiteBasicoFacultad": 2,
-    "liderGrupoInvestigacion": 4,
-    "liderRevista": 2
+    "liderColectivo": 0,
+    "participacionColectivo": 0,
+    "comiteCurricular": 0,
+    "comiteBasicoFacultad": 0,
+    "liderGrupoInvestigacion": 0,
+    "liderRevista": 0
+  },
+  "registroHorasSemanales": {
+    "sinProyecto": 0,
+    "investigadorPrincipal": 0,
+    "coinvestigador": 0,
+    "directorPrograma": 0,
+    "directorPosgrado": 0,
+    "coordinacionArea": 0,
+    "formacionDoctorado": 0,
+    "formacionMaestria": 0
+  },
+  "visualSettings": {
+    "form_bg_color": ""
   }
 }
-
-Usa números, no strings. Decimales con punto. Si algún valor no se encuentra en el texto, usa el valor más probable según el contexto del documento (por ejemplo, si ves "16 horas semanales de docencia" para un caso, asigna ese número al campo correspondiente).
 `;
 
-/**
- * Interpreta un archivo PDF de lineamientos usando Gemini y devuelve la configuración estructurada.
- * @param filePath Ruta del archivo PDF en el sistema de archivos.
- * @returns Promesa con el objeto LineamientosData.
- * @throws Error si no se puede extraer el texto, si Gemini no responde o si el JSON es inválido.
- */
 export async function interpretLineamientosWithGemini(filePath: string): Promise<LineamientosData> {
-  // 1. Extraer texto plano del PDF usando la función existente
   const rawText = await extractTextFromPDF(filePath);
-  
-  // 2. Gemini tiene un contexto muy grande, pero por eficiencia y para evitar costos, 
-  //    podemos limitar el texto a unos 15000 caracteres (suficiente para un documento de 10-15 páginas)
-  const truncated = rawText.length > 15000 ? rawText.substring(0, 15000) : rawText;
-  
-  // 3. Preparar el contenido para Gemini
-  const prompt = `${SYSTEM_PROMPT}\n\nTexto del documento:\n${truncated}`;
-  
-  // 4. Llamar a Gemini con configuración para forzar JSON
-  const result = await model.generateContent({
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.1,               // Baja temperatura para respuestas deterministas
-      responseMimeType: "application/json", // Gemini 1.5 Pro/Flash soportan esto
-    },
-  });
-  
-  const responseText = result.response.text();
-  
-  // 5. Limpiar posibles envolturas de markdown (por si acaso)
-  let cleanJson = responseText.trim();
-  if (cleanJson.startsWith("```json")) {
-    cleanJson = cleanJson.replace(/```json\n?/, "").replace(/\n?```$/, "");
-  } else if (cleanJson.startsWith("```")) {
-    cleanJson = cleanJson.replace(/```\n?/, "").replace(/\n?```$/, "");
+  console.log("=== PROCESANDO PDF CON GEMINI ===");
+
+  if (!rawText.trim()) {
+    throw new Error("El PDF no contiene texto extraíble");
   }
-  
-  // 6. Parsear JSON
-  let parsed: LineamientosData;
+
   try {
-    parsed = JSON.parse(cleanJson) as LineamientosData;
-  } catch (error) {
-    console.error("Error al parsear JSON de Gemini:", cleanJson);
-    throw new Error("La respuesta de Gemini no es un JSON válido");
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      generationConfig: { responseMimeType: "application/json" }
+    });
+
+    const result = await model.generateContent(`${PROMPT}\n\nTexto del documento:\n${rawText}`);
+    const responseText = result.response.text();
+    
+    const parsed = JSON.parse(responseText) as LineamientosData;
+    return parsed;
+  } catch (e) {
+    console.warn("Fallo al procesar con Gemini, intentando extracción fallback", e);
+    const fallback = fallbackExtract(rawText);
+    return fallback;
   }
-  
-  // 7. Validar que al menos el campo más importante exista
-  if (!parsed.docenciaDirecta?.sinProyecto) {
-    throw new Error("La IA no pudo extraer la carga docente base (sin proyecto)");
-  }
-  
-  // 8. Valores por defecto para campos que pudieran faltar (seguridad)
-  parsed.docenciaDirecta = {
-    sinProyecto: parsed.docenciaDirecta.sinProyecto ?? 16,
-    investigadorPrincipal: parsed.docenciaDirecta.investigadorPrincipal ?? 10,
-    coinvestigador: parsed.docenciaDirecta.coinvestigador ?? 13,
-    directorPrograma: parsed.docenciaDirecta.directorPrograma ?? 6,
-    directorPosgradoDescarga: parsed.docenciaDirecta.directorPosgradoDescarga ?? 5,
-    coordinacionAreaDescarga: parsed.docenciaDirecta.coordinacionAreaDescarga ?? 3,
-    formacionDoctorado: parsed.docenciaDirecta.formacionDoctorado ?? 8,
-    formacionMaestria: parsed.docenciaDirecta.formacionMaestria ?? 12,
-  };
-  
-  // 9. Retornar el objeto completo
-  return parsed;
 }

@@ -101,29 +101,20 @@ function createRateLimiter(
   };
 }
 
-/**
- * Rate limiter para /auth/forgot-password:
- * - Máximo 5 peticiones por IP en una ventana de 15 minutos
- * - Bloqueo de 30 minutos al superar el límite
- *
- * Razón: evitar spam de correos y enumeración de usuarios.
- */
-export const forgotPasswordLimiter = createRateLimiter(
-  5,              // max 5 intentos
-  15 * 60 * 1000, // ventana de 15 minutos
-  30 * 60 * 1000  // bloqueo de 30 minutos
-);
+const isDev = process.env.NODE_ENV !== "production";
 
 /**
- * Rate limiter para /auth/login:
- * - Máximo 10 peticiones por IP en 5 minutos
- * - Bloqueo de 15 minutos al superar el límite
- *
- * El frontend también tiene su propio lockout de 3 intentos,
- * pero este actúa como segunda capa defensiva en el servidor.
+ * Rate limiter para /auth/login y /auth/forgot-password.
+ * En desarrollo se desactivan para no bloquear pruebas (429).
+ * En producción: login 10/5min (bloqueo 15min); forgot-password 5/15min (bloqueo 30min).
  */
-export const loginLimiter = createRateLimiter(
-  10,             // max 10 intentos
-  5 * 60 * 1000,  // ventana de 5 minutos
-  15 * 60 * 1000  // bloqueo de 15 minutos
-);
+
+/** En desarrollo no bloquea login (evita 429 tras pruebas repetidas). En producción: 10/5min, bloqueo 15min. */
+export const loginLimiter = isDev
+  ? (_req: Request, _res: Response, next: NextFunction) => next()
+  : createRateLimiter(10, 5 * 60 * 1000, 15 * 60 * 1000);
+
+/** En desarrollo no bloquea forgot-password. */
+export const forgotPasswordLimiter = isDev
+  ? (_req: Request, _res: Response, next: NextFunction) => next()
+  : createRateLimiter(5, 15 * 60 * 1000, 30 * 60 * 1000);

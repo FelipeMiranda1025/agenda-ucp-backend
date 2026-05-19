@@ -480,7 +480,8 @@ INSERT INTO public.roles (id, name, description) VALUES
   (1, 'DocentePlanta',         'Rol encargado de diligenciar agenda sin responsabilidades diferentes a la docencia'),
   (2, 'DirectorPrograma',      'Rol encargado de diligenciar agenda con responsabilidades iguales o más que el docente planta'),
   (3, 'DecanoFacultad',        'Rol encargado de diligenciar agenda con responsabilidades iguales o más que el director del programa'),
-  (4, 'VicerrectorAcadémico',  'Rol encargado de diligenciar agenda con responsabilidades iguales o más que el decano de la facultad')
+  (4, 'VicerrectorAcadémico',  'Rol encargado de diligenciar agenda con responsabilidades iguales o más que el decano de la facultad'),
+  (5, 'Soporte',               'Rol encargado de brindar soporte técnico al sistema')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 -- States
@@ -556,7 +557,8 @@ INSERT INTO public.users (id, first_name, second_name, first_last_name, second_l
   (1, 'Docente',     '', 'Planta',     'Pruebas', '12345678',     'docenteplanta.pruebas@ucp.edu.co',        '74d18a339850e92425fe1c8b3efeddd5ff024d5291c629d79b35720c4bfe8e53', 1, 1),
   (2, 'Director',    '', 'Programa',   'Pruebas', '123456789',    'directorprograma.pruebas@ucp.edu.co',     '74d18a339850e92425fe1c8b3efeddd5ff024d5291c629d79b35720c4bfe8e53', 2, 1),
   (3, 'Decano',      '', 'Facultad',   'Pruebas', '1234567890',   'decanofacultad.pruebas@ucp.edu.co',       '74d18a339850e92425fe1c8b3efeddd5ff024d5291c629d79b35720c4bfe8e53', 3, 1),
-  (4, 'Vicerrector', '', 'Académico',  'Pruebas', '12345678900',  'vicerrectoracademico.pruebas@ucp.edu.co', '74d18a339850e92425fe1c8b3efeddd5ff024d5291c629d79b35720c4bfe8e53', 4, 1)
+  (4, 'Vicerrector', '', 'Académico',  'Pruebas', '12345678900',  'vicerrectoracademico.pruebas@ucp.edu.co', '74d18a339850e92425fe1c8b3efeddd5ff024d5291c629d79b35720c4bfe8e53', 4, 1),
+  (5, 'Soporte',     '', 'Técnico',    'Pruebas', '98989898',     'soporte.pruebas@ucp.edu.co',              '74d18a339850e92425fe1c8b3efeddd5ff024d5291c629d79b35720c4bfe8e53', 5, 1)
 ON CONFLICT (id) DO NOTHING;
 
 -- Docencia indirecta

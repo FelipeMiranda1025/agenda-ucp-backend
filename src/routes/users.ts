@@ -8,7 +8,7 @@ router.use(requireAuth);
 
 router.get("/", async (req: AuthRequest, res: Response) => {
     try {
-        const { ids, rols, id_state, id_faculty, id_professional_career } = req.query;
+        const { ids, ccs, rols, id_state, id_faculty, id_professional_career } = req.query;
         const where: string[] = [];
         const params: any[] = [];
 
@@ -24,6 +24,7 @@ router.get("/", async (req: AuthRequest, res: Response) => {
         };
 
         if (ids) pushIn("id", ids);
+        if (ccs) pushIn("cc", ccs);
         if (rols) pushIn("id_rol", rols);
         if (id_state) {
             params.push(Number(id_state));

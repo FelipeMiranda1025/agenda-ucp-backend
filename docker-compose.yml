@@ -23,7 +23,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1234Ucp*}
       POSTGRES_DB: ${POSTGRES_DB:-agendadocentedb}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
@@ -40,11 +40,11 @@ services:
     container_name: agendadocente-backend
     restart: unless-stopped
     ports:
-      - "${BACKEND_PORT:-4000}:4000"
+      - "${BACKEND_PORT:-4001}:4000"
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: ${DATABASE_URL:-postgres://admin:1234Ucp%2A@db:5432/agendadocentedb}
+      DATABASE_URL: postgres://admin:1234Ucp%2A@db:5432/agendadocentedb   # ← usa el contenedor db, no host.docker.internal
       JWT_SECRET: ${JWT_SECRET:-UCP_JWT_Secret_2025_CambiarEnProduccion}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://localhost:8080}
@@ -56,6 +56,7 @@ services:
       SMTP_FROM: ${SMTP_FROM:-Agenda Docente UCP <no-reply@ucp.edu.co>}
       UPLOADS_DIR: /var/app/uploads
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}   # ← se toma del entorno del host o del .env si docker-compose la interpreta
     volumes:
       - uploads-data:/var/app/uploads
     depends_on:
