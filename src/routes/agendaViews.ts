@@ -6,6 +6,7 @@ import {
   resolveStateAfterApprove,
   canUserReviewAgenda,
 } from "../services/agendaWorkflow";
+import { isMissingPendingReviewerRolColumn, MIGRATION_HINT_MESSAGE } from "../dbErrors";
 
 const router = Router();
 router.use(requireAuth);
@@ -158,14 +159,11 @@ router.get("/", async (req: AuthRequest, res: Response) => {
     sql += ` ORDER BY av.updated_at DESC, av.created_at DESC`;
     return res.json(await query(sql, params));
   } catch (e) {
-    const err = e as { message?: string; code?: string };
+    const err = e as { message?: string };
     console.error("[agenda-views:list]", e);
-    const missingColumn =
-      err?.code === "42703" ||
-      String(err?.message ?? "").includes("pending_reviewer_rol");
     return res.status(500).json({
-      message: missingColumn
-        ? "Falta migración de base de datos (pending_reviewer_rol). Ejecute npm run db:migrate en el servidor."
+      message: isMissingPendingReviewerRolColumn(e)
+        ? MIGRATION_HINT_MESSAGE
         : "Error obteniendo agenda views",
       error: err?.message,
     });
@@ -239,8 +237,14 @@ router.post("/", async (req: AuthRequest, res: Response) => {
     }
     return res.status(201).json(row);
   } catch (e) {
-    console.error(e);
-    return res.status(500).json({ message: "Error guardando agenda view", error: (e as any).message });
+    console.error("[agenda-views:post]", e);
+    const err = e as { message?: string };
+    return res.status(500).json({
+      message: isMissingPendingReviewerRolColumn(e)
+        ? MIGRATION_HINT_MESSAGE
+        : "Error guardando agenda view",
+      error: err?.message,
+    });
   }
 });
 

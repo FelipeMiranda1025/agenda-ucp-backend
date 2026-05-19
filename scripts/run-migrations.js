@@ -18,7 +18,7 @@ async function main() {
 
   const files = fs
     .readdirSync(migrationsDir)
-    .filter((f) => f.endsWith(".sql"))
+    .filter((f) => f.endsWith(".sql") && !f.toLowerCase().includes("purge"))
     .sort();
 
   if (files.length === 0) {

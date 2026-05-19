@@ -24,6 +24,7 @@ import semesterArchivesRouter from "./routes/semesterArchives";
 import { requestLogger } from "./middleware/logger";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { closeDb, pingDb } from "./db";
+import { runMigrations } from "./migrate";
 
 const app: Express = express();
 const PORT = parseInt(process.env.PORT ?? "4000", 10);
@@ -100,6 +101,13 @@ const startServer = async () => {
       process.exit(1);
     }
     console.log("✅ Conexión a PostgreSQL verificada");
+
+    const runMigrationsOnStart =
+      process.env.RUN_MIGRATIONS_ON_START === "true" ||
+      (process.env.NODE_ENV === "production" && process.env.RUN_MIGRATIONS_ON_START !== "false");
+    if (runMigrationsOnStart) {
+      await runMigrations();
+    }
 
     server = app.listen(PORT, () => {
       console.log(`✅ Backend UCP escuchando en http://0.0.0.0:${PORT}/api`);
