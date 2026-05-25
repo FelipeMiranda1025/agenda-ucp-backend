@@ -216,14 +216,17 @@ router.post("/", async (req: AuthRequest, res: Response) => {
       editor &&
       editor.cc !== cc
     ) {
-      const editorRow = await queryOne<{ id_faculty: number | null }>(
-        `SELECT id_faculty FROM public.users WHERE id=$1 AND id_state=1`,
+      const editorRow = await queryOne<{ id_faculty: number | null; id_rol: number }>(
+        `SELECT id_faculty, id_rol FROM public.users WHERE id=$1 AND id_state=1`,
         [editor.id]
       );
+      if (!editorRow) {
+        return res.status(403).json({ message: "Usuario editor no encontrado" });
+      }
       const allowed = await canSupervisorAmendAgendaForDocente(
-        editor.rolId,
+        editorRow.id_rol,
         editor.id,
-        editorRow?.id_faculty ?? null,
+        editorRow.id_faculty ?? null,
         cc
       );
       if (!allowed) {
@@ -232,7 +235,7 @@ router.post("/", async (req: AuthRequest, res: Response) => {
             "Solo el director de programa o el decano de facultad pueden modificar una agenda aprobada de su ámbito",
         });
       }
-      const amended = resolveStateAfterSupervisorAmendment(editor.rolId);
+      const amended = resolveStateAfterSupervisorAmendment(editorRow.id_rol);
       if (!amended) {
         return res.status(403).json({
           message: "Solo el director de programa o el decano pueden modificar una agenda aprobada",
