@@ -359,6 +359,228 @@ function buildAgendaApprovedEmailText(firstName: string, loginUrl: string): stri
  * Notifica al docente que su agenda fue aprobada en todos los niveles y puede
  * usar la distribución horaria semanal.
  */
+function reviewerLevelLabel(pendingReviewerRol: number): string {
+  if (pendingReviewerRol === 2) return "director de programa";
+  if (pendingReviewerRol === 3) return "decanatura del programa";
+  if (pendingReviewerRol === 4) return "Vicerrectoría Académica";
+  return "su nivel de revisión";
+}
+
+function buildAgendaReturnedEmailHtml(
+  safeName: string,
+  safeReviewer: string,
+  safeComment: string,
+  loginUrl: string
+): string {
+  const { headerBg, accent, buttonBg } = getEmailBrandColors();
+  const safeUrl = escapeHtml(loginUrl);
+  const commentBlock = safeComment
+    ? `<div style="margin:20px 0;padding:16px;background:#fef2f2;border-left:4px solid #dc2626;border-radius:4px;">
+         <p style="margin:0 0 8px;font-size:12px;color:#991b1b;text-transform:uppercase;letter-spacing:0.6px;">
+           Observación del revisor
+         </p>
+         <p style="margin:0;font-size:14px;color:#1f2937;line-height:1.6;white-space:pre-wrap;">${safeComment}</p>
+       </div>`
+    : `<p style="margin:0 0 16px;line-height:1.6;color:#6b7280;font-size:14px;">
+         No se registró una observación escrita. Revise el sistema por si hay comentarios adicionales.
+       </p>`;
+
+  return `<!doctype html>
+<html lang="es">
+  <body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f4f6f9;padding:32px 0;">
+      <tr><td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" role="presentation"
+               style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,0.07);">
+          <tr><td style="background:${headerBg};padding:24px 32px;color:#ffffff;font-size:18px;font-weight:bold;">
+            Agenda Docente &mdash; Universidad Cat&oacute;lica de Pereira
+          </td></tr>
+          <tr><td style="padding:32px;">
+            <h2 style="margin:0 0 16px;font-size:20px;color:${accent};">Hola, ${safeName}</h2>
+            <p style="margin:0 0 16px;line-height:1.6;">
+              Su <strong>agenda docente</strong> fue <strong>retornada</strong> por
+              <strong>${safeReviewer}</strong> para que realice las correcciones indicadas
+              y la vuelva a enviar desde el sistema.
+            </p>
+            ${commentBlock}
+            <p style="margin:0 0 16px;line-height:1.6;">
+              Ingrese con su c&eacute;dula o correo institucional, ajuste los registros y use
+              <strong>Confirmar datos</strong> para reenviar la agenda al flujo de aprobaci&oacute;n.
+            </p>
+            <p style="margin:24px 0;text-align:center;">
+              <a href="${safeUrl}" style="display:inline-block;padding:14px 28px;background:${buttonBg};
+                 color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;font-size:15px;">
+                Ingresar al sistema
+              </a>
+            </p>
+            <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">
+              Enlace: <span style="word-break:break-all;">${safeUrl}</span>
+            </p>
+            <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0;" />
+            <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">
+              Sistema de Agenda Docente &middot; Universidad Cat&oacute;lica de Pereira
+            </p>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function buildAgendaPendingReviewEmailHtml(
+  safeName: string,
+  safeDocente: string,
+  safeLevel: string,
+  pendingCount: number,
+  loginUrl: string
+): string {
+  const { headerBg, accent, buttonBg } = getEmailBrandColors();
+  const safeUrl = escapeHtml(loginUrl);
+  const countLine =
+    pendingCount > 1
+      ? `En este momento tiene <strong>${pendingCount} agendas</strong> pendientes de revisi&oacute;n en su nivel.`
+      : `Tiene <strong>1 agenda</strong> pendiente de revisi&oacute;n en su nivel.`;
+
+  return `<!doctype html>
+<html lang="es">
+  <body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f4f6f9;padding:32px 0;">
+      <tr><td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" role="presentation"
+               style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,0.07);">
+          <tr><td style="background:${headerBg};padding:24px 32px;color:#ffffff;font-size:18px;font-weight:bold;">
+            Agenda Docente &mdash; Universidad Cat&oacute;lica de Pereira
+          </td></tr>
+          <tr><td style="padding:32px;">
+            <h2 style="margin:0 0 16px;font-size:20px;color:${accent};">Hola, ${safeName}</h2>
+            <p style="margin:0 0 16px;line-height:1.6;">
+              La agenda docente de <strong>${safeDocente}</strong> requiere su revisi&oacute;n como
+              <strong>${safeLevel}</strong>.
+            </p>
+            <p style="margin:0 0 16px;line-height:1.6;">${countLine}</p>
+            <p style="margin:0 0 16px;line-height:1.6;">
+              Ingrese al sistema para aprobar o retornar las agendas asignadas a su nivel.
+            </p>
+            <p style="margin:24px 0;text-align:center;">
+              <a href="${safeUrl}" style="display:inline-block;padding:14px 28px;background:${buttonBg};
+                 color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;font-size:15px;">
+                Revisar agendas
+              </a>
+            </p>
+            <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">
+              Enlace: <span style="word-break:break-all;">${safeUrl}</span>
+            </p>
+            <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0;" />
+            <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">
+              Sistema de Agenda Docente &middot; Universidad Cat&oacute;lica de Pereira
+            </p>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+}
+
+/**
+ * Notifica al docente que su agenda fue retornada para corrección.
+ */
+export async function sendAgendaReturnedEmail(
+  to: string,
+  docenteName: string,
+  reviewerName: string,
+  reviewerComment: string
+): Promise<void> {
+  if (!isSmtpConfigured()) {
+    console.warn(
+      "[agenda-returned-email] SMTP no configurado; correo de retorno omitido"
+    );
+    return;
+  }
+
+  const loginUrl = resolveFrontendBaseUrl();
+  const html = buildAgendaReturnedEmailHtml(
+    escapeHtml((docenteName || "Docente").slice(0, 120)),
+    escapeHtml((reviewerName || "Revisor").slice(0, 120)),
+    escapeHtml((reviewerComment || "").slice(0, 4000)),
+    loginUrl
+  );
+  const text =
+    `Hola ${docenteName || "Docente"},\n\n` +
+    `Su agenda docente fue retornada por ${reviewerName} para corrección.\n\n` +
+    (reviewerComment
+      ? `Observación:\n${reviewerComment}\n\n`
+      : "Revise el sistema por observaciones adicionales.\n\n") +
+    `Ingrese al sistema, corrija y reenvíe con Confirmar datos.\n\n` +
+    `Enlace: ${loginUrl}\n\n` +
+    `--\nSistema de Agenda Docente · UCP`;
+
+  await getTransporter().sendMail({
+    from: getFrom(),
+    to,
+    subject: "Agenda docente retornada — correcciones requeridas",
+    text,
+    html,
+    headers: {
+      "X-Mailer": "AgendaDocente-UCP/1.0",
+      "Auto-Submitted": "auto-generated",
+    },
+  });
+}
+
+/**
+ * Notifica a un revisor que tiene una o más agendas pendientes de aprobar.
+ */
+export async function sendAgendaPendingReviewEmail(
+  to: string,
+  reviewerFirstName: string,
+  pendingReviewerRol: number,
+  docenteName: string,
+  pendingCount: number
+): Promise<void> {
+  if (!isSmtpConfigured()) {
+    console.warn(
+      "[agenda-pending-email] SMTP no configurado; correo de pendientes omitido"
+    );
+    return;
+  }
+
+  const loginUrl = resolveFrontendBaseUrl();
+  const level = reviewerLevelLabel(pendingReviewerRol);
+  const count = Math.max(1, pendingCount);
+  const html = buildAgendaPendingReviewEmailHtml(
+    escapeHtml((reviewerFirstName || "Revisor").slice(0, 100)),
+    escapeHtml((docenteName || "Docente").slice(0, 120)),
+    escapeHtml(level),
+    count,
+    loginUrl
+  );
+  const text =
+    `Hola ${reviewerFirstName || "Revisor"},\n\n` +
+    `La agenda de ${docenteName} requiere su revisión como ${level}.\n` +
+    (count > 1
+      ? `Tiene ${count} agendas pendientes en su nivel.\n\n`
+      : `Tiene 1 agenda pendiente en su nivel.\n\n`) +
+    `Ingrese al sistema: ${loginUrl}\n\n` +
+    `--\nSistema de Agenda Docente · UCP`;
+
+  await getTransporter().sendMail({
+    from: getFrom(),
+    to,
+    subject:
+      count > 1
+        ? `Agendas docentes pendientes de revisión (${count})`
+        : "Agenda docente pendiente de su revisión",
+    text,
+    html,
+    headers: {
+      "X-Mailer": "AgendaDocente-UCP/1.0",
+      "Auto-Submitted": "auto-generated",
+    },
+  });
+}
+
 export async function sendAgendaFullyApprovedEmail(
   to: string,
   firstName: string

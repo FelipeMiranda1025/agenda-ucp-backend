@@ -10,6 +10,11 @@ import {
 } from "../services/agendaWorkflow";
 import { isMissingPendingReviewerRolColumn, MIGRATION_HINT_MESSAGE } from "../dbErrors";
 import { sendAgendaFullyApprovedEmail } from "../services/email";
+import {
+  notifyAgendaReturnedToOwner,
+  notifyReviewersOfPendingAgenda,
+  shouldNotifyPendingReview,
+} from "../services/agendaEmailNotifications";
 
 const router = Router();
 router.use(requireAuth);
@@ -203,6 +208,12 @@ router.post("/", async (req: AuthRequest, res: Response) => {
         WHERE user_cc=$1 ORDER BY created_at DESC LIMIT 1`,
       [cc]
     );
+    const beforePending = existing
+      ? {
+          status: existing.status,
+          pending_reviewer_rol: existing.pending_reviewer_rol,
+        }
+      : null;
 
     const editor = req.user;
     let nextStatus =
@@ -270,6 +281,26 @@ router.post("/", async (req: AuthRequest, res: Response) => {
         [cc, recordsJson, nextStatus, pendingReviewerRol]
       );
     }
+
+    if (
+      row &&
+      row.status === "pending" &&
+      row.pending_reviewer_rol != null &&
+      shouldNotifyPendingReview(beforePending, {
+        status: row.status,
+        pending_reviewer_rol: row.pending_reviewer_rol,
+      })
+    ) {
+      void notifyReviewersOfPendingAgenda(cc, row.pending_reviewer_rol).catch(
+        (mailErr) => {
+          console.error(
+            "[agenda-views] Error enviando correo de agenda pendiente:",
+            { userCc: cc, pendingRol: row.pending_reviewer_rol, mailErr }
+          );
+        }
+      );
+    }
+
     return res.status(201).json(row);
   } catch (e) {
     console.error("[agenda-views:post]", e);
@@ -335,6 +366,25 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
           recordsJson,
         ]
       );
+      if (row) {
+        void notifyAgendaReturnedToOwner(
+          current.user_cc,
+          reviewer_cc ? String(reviewer_cc) : null,
+          reviewer_comment != null ? String(reviewer_comment) : null
+        )
+          .then(() => {
+            console.info(
+              "[agenda-views] Correo de agenda retornada enviado a",
+              current.user_cc
+            );
+          })
+          .catch((mailErr) => {
+            console.error(
+              "[agenda-views] Error enviando correo de retorno (retorno guardado):",
+              { userCc: current.user_cc, mailErr }
+            );
+          });
+      }
       return res.json(row);
     }
 
@@ -367,6 +417,36 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
           recordsJson,
         ]
       );
+
+      if (
+        row &&
+        next.status === "pending" &&
+        next.pending_reviewer_rol != null &&
+        shouldNotifyPendingReview(
+          {
+            status: current.status,
+            pending_reviewer_rol: current.pending_reviewer_rol,
+          },
+          {
+            status: "pending",
+            pending_reviewer_rol: next.pending_reviewer_rol,
+          }
+        )
+      ) {
+        void notifyReviewersOfPendingAgenda(
+          current.user_cc,
+          next.pending_reviewer_rol
+        ).catch((mailErr) => {
+          console.error(
+            "[agenda-views] Error enviando correo tras aprobación escalonada:",
+            {
+              userCc: current.user_cc,
+              pendingRol: next.pending_reviewer_rol,
+              mailErr,
+            }
+          );
+        });
+      }
 
       const becameFullyApproved =
         next.status === "approved" && current.status !== "approved";
