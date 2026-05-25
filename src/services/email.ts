@@ -218,6 +218,37 @@ function isSmtpConfigured(): boolean {
   return Boolean(process.env.SMTP_USER?.trim() && process.env.SMTP_PASS?.trim());
 }
 
+/** URL pública del frontend para enlaces en correos (producción: nunca localhost). */
+function resolveFrontendBaseUrl(): string {
+  const trim = (u: string) => u.replace(/\/$/, "");
+  const isLocal = (u: string) => /localhost|127\.0\.0\.1/i.test(u);
+  const inProd = process.env.NODE_ENV === "production";
+
+  const frontend = process.env.FRONTEND_URL?.trim();
+  if (frontend && !(inProd && isLocal(frontend))) {
+    return trim(frontend);
+  }
+
+  const corsOrigin = process.env.CORS_ORIGIN?.split(",")[0]?.trim();
+  if (corsOrigin && !isLocal(corsOrigin)) {
+    if (inProd && (!frontend || isLocal(frontend))) {
+      console.info(
+        "[email] FRONTEND_URL no usable en producción; enlaces con CORS_ORIGIN:",
+        corsOrigin
+      );
+    }
+    return trim(corsOrigin);
+  }
+
+  if (inProd) {
+    console.warn(
+      "[email] Defina FRONTEND_URL=https://ucp-agenda-frontend.onrender.com (o su URL) en Render"
+    );
+  }
+
+  return trim(frontend || "http://localhost:8080");
+}
+
 function buildAgendaApprovedEmailHtml(
   safeName: string,
   scheduleUrl: string
@@ -307,7 +338,7 @@ export async function sendAgendaFullyApprovedEmail(
     return;
   }
 
-  const base = (process.env.FRONTEND_URL ?? "http://localhost:8080").replace(/\/$/, "");
+  const base = resolveFrontendBaseUrl();
   const scheduleUrl = `${base}/schedule`;
   const safeName = escapeHtml((firstName?.trim() || "Docente").slice(0, 100));
   const html = buildAgendaApprovedEmailHtml(safeName, scheduleUrl);
