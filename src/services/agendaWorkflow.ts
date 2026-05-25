@@ -67,3 +67,48 @@ export function canUserReviewAgenda(
   if (pendingReviewerRol == null) return false;
   return userRolId === pendingReviewerRol;
 }
+
+/** Solo director (2) o decano (3) pueden editar una agenda ya aprobada. */
+export function canSupervisorAmendApprovedAgenda(editorRolId: number): boolean {
+  return editorRolId === 2 || editorRolId === 3;
+}
+
+/**
+ * Tras modificar una agenda aprobada: vuelve a pendiente solo ante vicerrectoría (4).
+ */
+export function resolveStateAfterSupervisorAmendment(): {
+  status: "pending";
+  pending_reviewer_rol: number;
+} {
+  return { status: "pending", pending_reviewer_rol: 4 };
+}
+
+/** Director: subordinado directo; Decano: misma facultad. */
+export async function canSupervisorAmendAgendaForDocente(
+  editorRolId: number,
+  editorUserId: number,
+  editorFacultyId: number | null,
+  ownerCc: string
+): Promise<boolean> {
+  if (!canSupervisorAmendApprovedAgenda(editorRolId)) return false;
+
+  const owner = await queryOne<{ id: number; id_faculty: number | null }>(
+    `SELECT id, id_faculty FROM public.users WHERE cc=$1 AND id_state=1`,
+    [ownerCc]
+  );
+  if (!owner) return false;
+
+  if (editorRolId === 3) {
+    return (
+      editorFacultyId != null &&
+      owner.id_faculty != null &&
+      owner.id_faculty === editorFacultyId
+    );
+  }
+
+  const link = await queryOne<{ supervisor_id: number }>(
+    `SELECT supervisor_id FROM public.user_hierarchy WHERE user_id=$1`,
+    [owner.id]
+  );
+  return link?.supervisor_id === editorUserId;
+}

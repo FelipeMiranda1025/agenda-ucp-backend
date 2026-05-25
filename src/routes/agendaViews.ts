@@ -4,7 +4,9 @@ import { requireAuth, AuthRequest } from "../middleware/auth";
 import {
   getInitialPendingReviewerRol,
   resolveStateAfterApprove,
+  resolveStateAfterSupervisorAmendment,
   canUserReviewAgenda,
+  canSupervisorAmendAgendaForDocente,
 } from "../services/agendaWorkflow";
 import { isMissingPendingReviewerRolColumn, MIGRATION_HINT_MESSAGE } from "../dbErrors";
 import { sendAgendaFullyApprovedEmail } from "../services/email";
@@ -201,13 +203,41 @@ router.post("/", async (req: AuthRequest, res: Response) => {
       [cc]
     );
 
-    const pendingReviewerRol = await getInitialPendingReviewerRol(cc);
-
-    // Reenvío tras retorno o primer envío: pending + revisor según jerarquía
-    const nextStatus =
+    const editor = req.user;
+    let nextStatus =
       requestedStatus === "pending" || existing?.status === "returned"
         ? "pending"
         : requestedStatus;
+    let pendingReviewerRol: number | null = null;
+
+    // Director o decano modifica agenda ya aprobada → reenvío a vicerrectoría
+    if (
+      existing?.status === "approved" &&
+      editor &&
+      editor.cc !== cc
+    ) {
+      const editorRow = await queryOne<{ id_faculty: number | null }>(
+        `SELECT id_faculty FROM public.users WHERE id=$1 AND id_state=1`,
+        [editor.id]
+      );
+      const allowed = await canSupervisorAmendAgendaForDocente(
+        editor.rolId,
+        editor.id,
+        editorRow?.id_faculty ?? null,
+        cc
+      );
+      if (!allowed) {
+        return res.status(403).json({
+          message:
+            "Solo el director de programa o el decano de facultad pueden modificar una agenda aprobada de su ámbito",
+        });
+      }
+      const amended = resolveStateAfterSupervisorAmendment();
+      nextStatus = amended.status;
+      pendingReviewerRol = amended.pending_reviewer_rol;
+    } else if (nextStatus === "pending") {
+      pendingReviewerRol = await getInitialPendingReviewerRol(cc);
+    }
 
     let row;
     if (existing) {
