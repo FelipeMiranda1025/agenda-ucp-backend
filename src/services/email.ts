@@ -251,9 +251,9 @@ function resolveFrontendBaseUrl(): string {
 
 function buildAgendaApprovedEmailHtml(
   safeName: string,
-  scheduleUrl: string
+  loginUrl: string
 ): string {
-  const safeUrl = escapeHtml(scheduleUrl);
+  const safeUrl = escapeHtml(loginUrl);
   return `<!doctype html>
 <html lang="es">
   <body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
@@ -282,17 +282,17 @@ function buildAgendaApprovedEmailHtml(
                   seg&uacute;n corresponda a su caso).
                 </p>
                 <p style="margin:0 0 16px;line-height:1.6;">
-                  Ya puede ingresar al sistema y diligenciar su
-                  <strong>distribuci&oacute;n horaria semanal</strong> desde el men&uacute;
-                  <em>Horario de permanencia</em> o la secci&oacute;n
-                  <em>3.1 Distribuci&oacute;n horaria</em>.
+                  Ingrese al sistema con su c&eacute;dula o correo institucional.
+                  En <strong>Mi perfil</strong> encontrar&aacute; el acceso a
+                  <strong>Distribuci&oacute;n horaria</strong> para diligenciar o revisar
+                  su horario semanal.
                 </p>
                 <p style="margin:24px 0;text-align:center;">
                   <a href="${safeUrl}"
                      style="display:inline-block;padding:14px 28px;background:#0a4d8c;
                             color:#ffffff;text-decoration:none;border-radius:6px;
                             font-weight:bold;font-size:15px;">
-                    Abrir distribuci&oacute;n horaria
+                    Ingresar al sistema
                   </a>
                 </p>
                 <p style="margin:0 0 12px;font-size:13px;color:#6b7280;line-height:1.5;">
@@ -313,12 +313,12 @@ function buildAgendaApprovedEmailHtml(
 </html>`;
 }
 
-function buildAgendaApprovedEmailText(firstName: string, scheduleUrl: string): string {
+function buildAgendaApprovedEmailText(firstName: string, loginUrl: string): string {
   return (
     `Hola ${firstName || "Docente"},\n\n` +
     `Su agenda docente ha sido aprobada por todas las instancias del flujo de revisión.\n\n` +
-    `Ya puede diligenciar su distribución horaria semanal en el Sistema de Agenda Docente UCP.\n\n` +
-    `Enlace directo: ${scheduleUrl}\n\n` +
+    `Ingrese al Sistema de Agenda Docente UCP. En Mi perfil encontrará Distribución horaria para su horario semanal.\n\n` +
+    `Enlace: ${loginUrl}\n\n` +
     `--\nSistema de Agenda Docente · Universidad Católica de Pereira`
   );
 }
@@ -338,11 +338,10 @@ export async function sendAgendaFullyApprovedEmail(
     return;
   }
 
-  const base = resolveFrontendBaseUrl();
-  const scheduleUrl = `${base}/schedule`;
+  const loginUrl = resolveFrontendBaseUrl();
   const safeName = escapeHtml((firstName?.trim() || "Docente").slice(0, 100));
-  const html = buildAgendaApprovedEmailHtml(safeName, scheduleUrl);
-  const text = buildAgendaApprovedEmailText(firstName?.trim() || "Docente", scheduleUrl);
+  const html = buildAgendaApprovedEmailHtml(safeName, loginUrl);
+  const text = buildAgendaApprovedEmailText(firstName?.trim() || "Docente", loginUrl);
 
   await getTransporter().sendMail({
     from: getFrom(),
