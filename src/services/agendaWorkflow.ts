@@ -89,6 +89,33 @@ export function resolveStateAfterSupervisorAmendment(
   return null;
 }
 
+/**
+ * Guardado por director/decano: agenda aprobada o corrección mientras espera el siguiente nivel.
+ */
+export function resolveSupervisorAmendmentSave(
+  editorRolId: number,
+  existing: { status: string; pending_reviewer_rol: number | null }
+): { status: "pending"; pending_reviewer_rol: number } | null {
+  if (existing.status === "approved") {
+    return resolveStateAfterSupervisorAmendment(editorRolId);
+  }
+  if (
+    existing.status === "pending" &&
+    existing.pending_reviewer_rol === 3 &&
+    editorRolId === 2
+  ) {
+    return { status: "pending", pending_reviewer_rol: 3 };
+  }
+  if (
+    existing.status === "pending" &&
+    existing.pending_reviewer_rol === 4 &&
+    editorRolId === 3
+  ) {
+    return { status: "pending", pending_reviewer_rol: 4 };
+  }
+  return null;
+}
+
 /** Director: subordinado directo; Decano: misma facultad. */
 export async function canSupervisorAmendAgendaForDocente(
   editorRolId: number,

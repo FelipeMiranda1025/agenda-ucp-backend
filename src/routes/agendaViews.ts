@@ -4,7 +4,7 @@ import { requireAuth, AuthRequest } from "../middleware/auth";
 import {
   getInitialPendingReviewerRol,
   resolveStateAfterApprove,
-  resolveStateAfterSupervisorAmendment,
+  resolveSupervisorAmendmentSave,
   canUserReviewAgenda,
   canSupervisorAmendAgendaForDocente,
 } from "../services/agendaWorkflow";
@@ -197,8 +197,9 @@ router.post("/", async (req: AuthRequest, res: Response) => {
     const existing = await queryOne<{
       id: string;
       status: string;
+      pending_reviewer_rol: number | null;
     }>(
-      `SELECT id, status FROM public.agenda_views
+      `SELECT id, status, pending_reviewer_rol FROM public.agenda_views
         WHERE user_cc=$1 ORDER BY created_at DESC LIMIT 1`,
       [cc]
     );
@@ -210,12 +211,8 @@ router.post("/", async (req: AuthRequest, res: Response) => {
         : requestedStatus;
     let pendingReviewerRol: number | null = null;
 
-    // Director o decano modifica agenda ya aprobada → reenvío a vicerrectoría
-    if (
-      existing?.status === "approved" &&
-      editor &&
-      editor.cc !== cc
-    ) {
+    // Director o decano modifica agenda (aprobada o en espera del siguiente nivel)
+    if (existing && editor && editor.cc !== cc) {
       const editorRow = await queryOne<{ id_faculty: number | null; id_rol: number }>(
         `SELECT id_faculty, id_rol FROM public.users WHERE id=$1 AND id_state=1`,
         [editor.id]
@@ -223,27 +220,26 @@ router.post("/", async (req: AuthRequest, res: Response) => {
       if (!editorRow) {
         return res.status(403).json({ message: "Usuario editor no encontrado" });
       }
-      const allowed = await canSupervisorAmendAgendaForDocente(
-        editorRow.id_rol,
-        editor.id,
-        editorRow.id_faculty ?? null,
-        cc
-      );
-      if (!allowed) {
-        return res.status(403).json({
-          message:
-            "Solo el director de programa o el decano de facultad pueden modificar una agenda aprobada de su ámbito",
-        });
+      const amendSave = resolveSupervisorAmendmentSave(editorRow.id_rol, existing);
+      if (amendSave) {
+        const allowed = await canSupervisorAmendAgendaForDocente(
+          editorRow.id_rol,
+          editor.id,
+          editorRow.id_faculty ?? null,
+          cc
+        );
+        if (!allowed) {
+          return res.status(403).json({
+            message:
+              "Solo el director de programa o el decano de facultad pueden modificar esta agenda en su ámbito",
+          });
+        }
+        nextStatus = amendSave.status;
+        pendingReviewerRol = amendSave.pending_reviewer_rol;
       }
-      const amended = resolveStateAfterSupervisorAmendment(editorRow.id_rol);
-      if (!amended) {
-        return res.status(403).json({
-          message: "Solo el director de programa o el decano pueden modificar una agenda aprobada",
-        });
-      }
-      nextStatus = amended.status;
-      pendingReviewerRol = amended.pending_reviewer_rol;
-    } else if (nextStatus === "pending") {
+    }
+
+    if (pendingReviewerRol == null && nextStatus === "pending") {
       pendingReviewerRol = await getInitialPendingReviewerRol(cc);
     }
 
