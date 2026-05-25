@@ -7,6 +7,7 @@ import {
   canUserReviewAgenda,
 } from "../services/agendaWorkflow";
 import { isMissingPendingReviewerRolColumn, MIGRATION_HINT_MESSAGE } from "../dbErrors";
+import { sendAgendaFullyApprovedEmail } from "../services/email";
 
 const router = Router();
 router.use(requireAuth);
@@ -332,6 +333,46 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
           recordsJson,
         ]
       );
+
+      const becameFullyApproved =
+        next.status === "approved" && current.status !== "approved";
+
+      if (becameFullyApproved && row) {
+        const ownerContact = await queryOne<{
+          email: string | null;
+          first_name: string | null;
+        }>(
+          `SELECT email, first_name FROM public.users WHERE cc=$1 AND id_state=1`,
+          [current.user_cc]
+        );
+        if (ownerContact?.email) {
+          void sendAgendaFullyApprovedEmail(
+            ownerContact.email,
+            ownerContact.first_name ?? ""
+          )
+            .then(() => {
+              console.info(
+                "[agenda-views] Correo de agenda aprobada enviado a",
+                current.user_cc
+              );
+            })
+            .catch((mailErr) => {
+              console.error(
+                "[agenda-views] Error enviando correo de agenda aprobada (aprobación guardada):",
+                {
+                  userCc: current.user_cc,
+                  error: mailErr instanceof Error ? mailErr.message : mailErr,
+                }
+              );
+            });
+        } else {
+          console.warn(
+            "[agenda-views] Agenda aprobada sin correo registrado para",
+            current.user_cc
+          );
+        }
+      }
+
       return res.json(row);
     }
 

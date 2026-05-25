@@ -214,6 +214,118 @@ function buildPasswordEmailText(firstName: string, tempPassword: string): string
  *
  * @throws Error si el envío SMTP falla (el caller debe manejar el error)
  */
+function isSmtpConfigured(): boolean {
+  return Boolean(process.env.SMTP_USER?.trim() && process.env.SMTP_PASS?.trim());
+}
+
+function buildAgendaApprovedEmailHtml(
+  safeName: string,
+  scheduleUrl: string
+): string {
+  const safeUrl = escapeHtml(scheduleUrl);
+  return `<!doctype html>
+<html lang="es">
+  <body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+           style="background:#f4f6f9;padding:32px 0;">
+      <tr>
+        <td align="center">
+          <table width="600" cellpadding="0" cellspacing="0" role="presentation"
+                 style="background:#ffffff;border-radius:8px;overflow:hidden;
+                        box-shadow:0 2px 6px rgba(0,0,0,0.07);">
+            <tr>
+              <td style="background:#0a4d8c;padding:24px 32px;
+                         color:#ffffff;font-size:18px;font-weight:bold;">
+                Agenda Docente &mdash; Universidad Cat&oacute;lica de Pereira
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px;">
+                <h2 style="margin:0 0 16px;font-size:20px;color:#0a4d8c;">
+                  Hola, ${safeName}
+                </h2>
+                <p style="margin:0 0 16px;line-height:1.6;">
+                  Le informamos que su <strong>agenda docente</strong> ha sido
+                  <strong>aprobada</strong> por todas las instancias del flujo de revisi&oacute;n
+                  (director de programa, decano de facultad y vicerrector&iacute;a acad&eacute;mica,
+                  seg&uacute;n corresponda a su caso).
+                </p>
+                <p style="margin:0 0 16px;line-height:1.6;">
+                  Ya puede ingresar al sistema y diligenciar su
+                  <strong>distribuci&oacute;n horaria semanal</strong> desde el men&uacute;
+                  <em>Horario de permanencia</em> o la secci&oacute;n
+                  <em>3.1 Distribuci&oacute;n horaria</em>.
+                </p>
+                <p style="margin:24px 0;text-align:center;">
+                  <a href="${safeUrl}"
+                     style="display:inline-block;padding:14px 28px;background:#0a4d8c;
+                            color:#ffffff;text-decoration:none;border-radius:6px;
+                            font-weight:bold;font-size:15px;">
+                    Abrir distribuci&oacute;n horaria
+                  </a>
+                </p>
+                <p style="margin:0 0 12px;font-size:13px;color:#6b7280;line-height:1.5;">
+                  Si el bot&oacute;n no funciona, copie este enlace en su navegador:<br />
+                  <span style="word-break:break-all;">${safeUrl}</span>
+                </p>
+                <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0;" />
+                <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">
+                  Sistema de Agenda Docente &middot; Universidad Cat&oacute;lica de Pereira
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function buildAgendaApprovedEmailText(firstName: string, scheduleUrl: string): string {
+  return (
+    `Hola ${firstName || "Docente"},\n\n` +
+    `Su agenda docente ha sido aprobada por todas las instancias del flujo de revisión.\n\n` +
+    `Ya puede diligenciar su distribución horaria semanal en el Sistema de Agenda Docente UCP.\n\n` +
+    `Enlace directo: ${scheduleUrl}\n\n` +
+    `--\nSistema de Agenda Docente · Universidad Católica de Pereira`
+  );
+}
+
+/**
+ * Notifica al docente que su agenda fue aprobada en todos los niveles y puede
+ * usar la distribución horaria semanal.
+ */
+export async function sendAgendaFullyApprovedEmail(
+  to: string,
+  firstName: string
+): Promise<void> {
+  if (!isSmtpConfigured()) {
+    console.warn(
+      "[agenda-approved-email] SMTP no configurado (SMTP_USER/SMTP_PASS); correo omitido"
+    );
+    return;
+  }
+
+  const base = (process.env.FRONTEND_URL ?? "http://localhost:8080").replace(/\/$/, "");
+  const scheduleUrl = `${base}/schedule`;
+  const safeName = escapeHtml((firstName?.trim() || "Docente").slice(0, 100));
+  const html = buildAgendaApprovedEmailHtml(safeName, scheduleUrl);
+  const text = buildAgendaApprovedEmailText(firstName?.trim() || "Docente", scheduleUrl);
+
+  await getTransporter().sendMail({
+    from: getFrom(),
+    to,
+    subject: "Agenda docente aprobada — distribución horaria habilitada",
+    text,
+    html,
+    headers: {
+      "X-Mailer": "AgendaDocente-UCP/1.0",
+      "Auto-Submitted": "auto-generated",
+    },
+  });
+}
+
 export async function sendTemporaryPasswordEmail(
   to: string,
   firstName: string,
