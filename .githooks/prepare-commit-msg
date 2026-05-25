@@ -1,0 +1,10 @@
+#!/bin/sh
+# Quita la firma automatica de Cursor en mensajes de commit.
+COMMIT_MSG_FILE=$1
+[ -f "$COMMIT_MSG_FILE" ] || exit 0
+tmp="${COMMIT_MSG_FILE}.tmp"
+grep -v -i 'co-authored-by:.*cursor' "$COMMIT_MSG_FILE" \
+  | grep -v 'cursoragent@cursor.com' \
+  | grep -v -i 'made-with:.*cursor' > "$tmp"
+mv "$tmp" "$COMMIT_MSG_FILE"
+exit 0

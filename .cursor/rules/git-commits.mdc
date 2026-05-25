@@ -1,0 +1,9 @@
+---
+description: Commits sin atribucion de Cursor
+alwaysApply: true
+---
+
+# Commits Git
+
+- Nunca agregues `Co-authored-by: Cursor`, `cursoragent@cursor.com`, ni `Made-with: Cursor` en mensajes de commit.
+- Usa mensajes de commit cortos en espanol o ingles, solo el titulo (sin trailers de co-autoria).
