@@ -99,6 +99,36 @@ function escapeHtml(text: string): string {
     .replace(/'/g,  "&#39;");
 }
 
+// ─── Colores institucionales UCP (alineados con el frontend) ─────────────────
+
+const UCP_BRAND = {
+  green: "#00804E",
+  greenDark: "#005A36",
+  red: "#8C1D18",
+  redDark: "#6B1214",
+} as const;
+
+/** Tema del correo: green (default) o red — variable EMAIL_BRAND_THEME */
+function getEmailBrandColors(): {
+  headerBg: string;
+  accent: string;
+  buttonBg: string;
+} {
+  const theme = (process.env.EMAIL_BRAND_THEME ?? "green").toLowerCase();
+  if (theme === "red") {
+    return {
+      headerBg: UCP_BRAND.red,
+      accent: UCP_BRAND.redDark,
+      buttonBg: UCP_BRAND.red,
+    };
+  }
+  return {
+    headerBg: UCP_BRAND.green,
+    accent: UCP_BRAND.greenDark,
+    buttonBg: UCP_BRAND.green,
+  };
+}
+
 // ─── Plantillas de correo ───────────────────────────────────────────────────
 
 /**
@@ -106,6 +136,7 @@ function escapeHtml(text: string): string {
  * Todos los valores dinámicos pasan por escapeHtml().
  */
 function buildPasswordEmailHtml(safeName: string, safePwd: string): string {
+  const { headerBg, accent, buttonBg } = getEmailBrandColors();
   return `<!doctype html>
 <html lang="es">
   <body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
@@ -119,7 +150,7 @@ function buildPasswordEmailHtml(safeName: string, safePwd: string): string {
 
             <!-- Encabezado institucional -->
             <tr>
-              <td style="background:#0a4d8c;padding:24px 32px;
+              <td style="background:${headerBg};padding:24px 32px;
                          color:#ffffff;font-size:18px;font-weight:bold;">
                 Agenda Docente &mdash; Universidad Cat&oacute;lica de Pereira
               </td>
@@ -128,7 +159,7 @@ function buildPasswordEmailHtml(safeName: string, safePwd: string): string {
             <!-- Cuerpo -->
             <tr>
               <td style="padding:32px;">
-                <h2 style="margin:0 0 16px;font-size:20px;color:#0a4d8c;">
+                <h2 style="margin:0 0 16px;font-size:20px;color:${accent};">
                   Hola, ${safeName}
                 </h2>
                 <p style="margin:0 0 16px;line-height:1.6;">
@@ -145,7 +176,7 @@ function buildPasswordEmailHtml(safeName: string, safePwd: string): string {
                     Tu nueva contrase&ntilde;a temporal
                   </p>
                   <p style="margin:0;font-family:'Courier New',Consolas,monospace;
-                             font-size:24px;font-weight:bold;color:#0a4d8c;
+                             font-size:24px;font-weight:bold;color:${accent};
                              letter-spacing:3px;word-break:break-all;">
                     ${safePwd}
                   </p>
@@ -253,6 +284,7 @@ function buildAgendaApprovedEmailHtml(
   safeName: string,
   loginUrl: string
 ): string {
+  const { headerBg, accent, buttonBg } = getEmailBrandColors();
   const safeUrl = escapeHtml(loginUrl);
   return `<!doctype html>
 <html lang="es">
@@ -265,14 +297,14 @@ function buildAgendaApprovedEmailHtml(
                  style="background:#ffffff;border-radius:8px;overflow:hidden;
                         box-shadow:0 2px 6px rgba(0,0,0,0.07);">
             <tr>
-              <td style="background:#0a4d8c;padding:24px 32px;
+              <td style="background:${headerBg};padding:24px 32px;
                          color:#ffffff;font-size:18px;font-weight:bold;">
                 Agenda Docente &mdash; Universidad Cat&oacute;lica de Pereira
               </td>
             </tr>
             <tr>
               <td style="padding:32px;">
-                <h2 style="margin:0 0 16px;font-size:20px;color:#0a4d8c;">
+                <h2 style="margin:0 0 16px;font-size:20px;color:${accent};">
                   Hola, ${safeName}
                 </h2>
                 <p style="margin:0 0 16px;line-height:1.6;">
@@ -289,7 +321,7 @@ function buildAgendaApprovedEmailHtml(
                 </p>
                 <p style="margin:24px 0;text-align:center;">
                   <a href="${safeUrl}"
-                     style="display:inline-block;padding:14px 28px;background:#0a4d8c;
+                     style="display:inline-block;padding:14px 28px;background:${buttonBg};
                             color:#ffffff;text-decoration:none;border-radius:6px;
                             font-weight:bold;font-size:15px;">
                     Ingresar al sistema
