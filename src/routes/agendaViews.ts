@@ -232,7 +232,12 @@ router.post("/", async (req: AuthRequest, res: Response) => {
             "Solo el director de programa o el decano de facultad pueden modificar una agenda aprobada de su ámbito",
         });
       }
-      const amended = resolveStateAfterSupervisorAmendment();
+      const amended = resolveStateAfterSupervisorAmendment(editor.rolId);
+      if (!amended) {
+        return res.status(403).json({
+          message: "Solo el director de programa o el decano pueden modificar una agenda aprobada",
+        });
+      }
       nextStatus = amended.status;
       pendingReviewerRol = amended.pending_reviewer_rol;
     } else if (nextStatus === "pending") {

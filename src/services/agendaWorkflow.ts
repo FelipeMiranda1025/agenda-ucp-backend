@@ -74,13 +74,19 @@ export function canSupervisorAmendApprovedAgenda(editorRolId: number): boolean {
 }
 
 /**
- * Tras modificar una agenda aprobada: vuelve a pendiente solo ante vicerrectoría (4).
+ * Tras modificar una agenda aprobada: reingresa al flujo normal desde el nivel siguiente.
+ * Director (2) → decano (3); Decano (3) → vicerrector (4).
  */
-export function resolveStateAfterSupervisorAmendment(): {
-  status: "pending";
-  pending_reviewer_rol: number;
-} {
-  return { status: "pending", pending_reviewer_rol: 4 };
+export function resolveStateAfterSupervisorAmendment(
+  editorRolId: number
+): { status: "pending"; pending_reviewer_rol: number } | null {
+  if (editorRolId === 2) {
+    return { status: "pending", pending_reviewer_rol: 3 };
+  }
+  if (editorRolId === 3) {
+    return { status: "pending", pending_reviewer_rol: 4 };
+  }
+  return null;
 }
 
 /** Director: subordinado directo; Decano: misma facultad. */
