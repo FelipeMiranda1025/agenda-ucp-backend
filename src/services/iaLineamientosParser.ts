@@ -437,6 +437,26 @@ function enrichFromArticlesText(config: LineamientosData, text: string): Lineami
     return Number.isFinite(n) ? n : undefined;
   };
 
+  const getBoundedRoleZone = (
+    start: RegExp,
+    endPatterns: RegExp[],
+    maxWindow = 1800
+  ): string | undefined => {
+    const m = text.match(start);
+    if (!m || m.index == null) return undefined;
+    const from = m.index;
+    const window = text.slice(from, Math.min(text.length, from + maxWindow));
+    let end = window.length;
+    for (const endPattern of endPatterns) {
+      const rel = window.slice(1).search(endPattern);
+      if (rel >= 0) {
+        const idx = rel + 1;
+        if (idx > 0 && idx < end) end = idx;
+      }
+    }
+    return window.slice(0, end);
+  };
+
   const invDd = inferRoleDdPreferringDescarga(
     /investigador\s+principal(?:es)?(?:\s+con\s+proyecto\s+aprobado)?/i
   );
@@ -542,6 +562,40 @@ function enrichFromArticlesText(config: LineamientosData, text: string): Lineami
     c.docenciaDirecta.investigadorPrincipal = Math.max(0, defectoBase - invDesc);
   }
   if (invXls != null && invXls > 0) c.registroHorasSemanales.investigadorPrincipal = invXls;
+
+  // Ultra-strict override for Art. 6.a to avoid taking values from neighboring roles.
+  const invStrictZone = getBoundedRoleZone(
+    /investigador\s+principal(?:es)?(?:\s+con\s+proyecto\s+aprobado)?/i,
+    [
+      /co-?\s*investigador(?:es)?|coinvestigador(?:es)?/i,
+      /direcci[oó]n\s+de\s+un\s+programa\s+de\s+posgrado/i,
+      /coordinaci[oó]n\s+de\s+un\s+[áa]rea/i,
+      /formaci[oó]n\s+de\s+maestr[íi]a|docentes?\s+en\s+formaci[oó]n\s+de\s+maestr[íi]a/i,
+      /art[íi]culo\s*7\b/i,
+    ]
+  );
+  const invStrictDesc = descargaFromZone(invStrictZone);
+  const invStrictXls =
+    invStrictZone != null
+      ? (() => {
+          const m =
+            invStrictZone.match(
+              /excel[^.\n]{0,100}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?[^.\n]{0,80}investigaci[oó]n/i
+            ) ||
+            invStrictZone.match(
+              /registr(?:ar|ará|a)[^.\n]{0,120}?excel[^.\n]{0,80}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i
+            );
+          if (!m?.[1]) return undefined;
+          const n = Number(m[1].replace(",", "."));
+          return Number.isFinite(n) ? n : undefined;
+        })()
+      : undefined;
+  if (invStrictDesc != null && defectoBase > 0) {
+    c.docenciaDirecta.investigadorPrincipal = Math.max(0, defectoBase - invStrictDesc);
+  }
+  if (invStrictXls != null && invStrictXls > 0) {
+    c.registroHorasSemanales.investigadorPrincipal = invStrictXls;
+  }
 
   const maesZone = getRoleZone(
     /formaci[oó]n\s+de\s+maestr[íi]a|docentes?\s+en\s+formaci[oó]n\s+de\s+maestr[íi]a/i
