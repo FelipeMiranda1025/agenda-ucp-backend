@@ -211,13 +211,49 @@ function toPositiveOrZero(value: unknown, fallback = 0): number {
 }
 
 function roleDd(roles: Record<string, GeminiRoleValue>, key: string): number {
-  return toPositiveOrZero(roles[key]?.dd, 0);
+  const raw = roles[key]?.dd;
+  if (typeof raw === "string" && /curso/i.test(raw)) {
+    // "Solo N cursos" is not a direct-hours value for this schema.
+    return 0;
+  }
+  return toPositiveOrZero(raw, 0);
+}
+
+function roleDdFromKeys(roles: Record<string, GeminiRoleValue>, keys: string[]): number {
+  for (const key of keys) {
+    const n = roleDd(roles, key);
+    if (n > 0) return n;
+  }
+  return 0;
 }
 
 function roleFxl(roles: Record<string, GeminiRoleValue>, key: string): number | undefined {
   const n = toNumber(roles[key]?.Fxl);
   if (n == null || !Number.isFinite(n) || n <= 0) return undefined;
   return n;
+}
+
+function roleFxlFromKeys(
+  roles: Record<string, GeminiRoleValue>,
+  keys: string[]
+): number | undefined {
+  for (const key of keys) {
+    const n = roleFxl(roles, key);
+    if (n != null && n > 0) return n;
+  }
+  return undefined;
+}
+
+function extractArticles4to6(raw: string): string {
+  const normalized = raw.replace(/\r/g, "");
+  const startRegex = /art[íi]culo\s*4\b/i;
+  const endRegex = /art[íi]culo\s*7\b/i;
+  const start = normalized.search(startRegex);
+  if (start < 0) return raw;
+  const afterStart = normalized.slice(start);
+  const endRel = afterStart.search(endRegex);
+  const scoped = endRel > 0 ? afterStart.slice(0, endRel) : afterStart;
+  return scoped.trim() || raw;
 }
 
 function normalizeGeminiOutput(parsed: unknown): LineamientosData {
@@ -241,8 +277,14 @@ function normalizeGeminiOutput(parsed: unknown): LineamientosData {
   const defecto = toPositiveOrZero(data.defecto, 0);
 
   // In current backend schema, these two fields are "descarga" hours.
-  const directorPosgradoDd = roleDd(roles, "director_posgrado_x1");
-  const coordinadorAreaDd = roleDd(roles, "coordinador_area");
+  const directorPosgradoDd = roleDdFromKeys(roles, [
+    "director_posgrado_x1",
+    "director_posgrado",
+  ]);
+  const coordinadorAreaDd = roleDdFromKeys(roles, [
+    "coordinador_area",
+    "coordinacion_area",
+  ]);
   const directorPosgradoDescarga =
     defecto > 0 && directorPosgradoDd > 0
       ? Math.max(0, defecto - directorPosgradoDd)
@@ -270,13 +312,25 @@ function normalizeGeminiOutput(parsed: unknown): LineamientosData {
     semanasSemestre,
     docenciaDirecta: {
       sinProyecto: defecto,
-      investigadorPrincipal: roleDd(roles, "investigador_principal"),
-      coinvestigador: roleDd(roles, "co_investigador"),
-      directorPrograma: roleDd(roles, "jefes_depto_director_programa"),
+      investigadorPrincipal: roleDdFromKeys(roles, [
+        "investigador_principal",
+        "investigador",
+      ]),
+      coinvestigador: roleDdFromKeys(roles, ["co_investigador", "coinvestigador"]),
+      directorPrograma: roleDdFromKeys(roles, [
+        "jefes_depto_director_programa",
+        "director_programa",
+      ]),
       directorPosgradoDescarga,
       coordinacionAreaDescarga,
-      formacionDoctorado: roleDd(roles, "formacion_doctoral"),
-      formacionMaestria: roleDd(roles, "formacion_maestria"),
+      formacionDoctorado: roleDdFromKeys(roles, [
+        "formacion_doctoral",
+        "formacion_doctorado",
+      ]),
+      formacionMaestria: roleDdFromKeys(roles, [
+        "formacion_maestria",
+        "formacion_magister",
+      ]),
     },
     equivalenciasPosgrado: {
       especializacion: 1.5,
@@ -313,13 +367,31 @@ function normalizeGeminiOutput(parsed: unknown): LineamientosData {
     },
     registroHorasSemanales: {
       sinProyecto: roleFxl(roles, "defecto"),
-      investigadorPrincipal: roleFxl(roles, "investigador_principal"),
-      coinvestigador: roleFxl(roles, "co_investigador"),
-      directorPrograma: roleFxl(roles, "jefes_depto_director_programa"),
-      directorPosgrado: roleFxl(roles, "director_posgrado_x1"),
-      coordinacionArea: roleFxl(roles, "coordinador_area"),
-      formacionDoctorado: roleFxl(roles, "formacion_doctoral"),
-      formacionMaestria: roleFxl(roles, "formacion_maestria"),
+      investigadorPrincipal: roleFxlFromKeys(roles, [
+        "investigador_principal",
+        "investigador",
+      ]),
+      coinvestigador: roleFxlFromKeys(roles, ["co_investigador", "coinvestigador"]),
+      directorPrograma: roleFxlFromKeys(roles, [
+        "jefes_depto_director_programa",
+        "director_programa",
+      ]),
+      directorPosgrado: roleFxlFromKeys(roles, [
+        "director_posgrado_x1",
+        "director_posgrado",
+      ]),
+      coordinacionArea: roleFxlFromKeys(roles, [
+        "coordinador_area",
+        "coordinacion_area",
+      ]),
+      formacionDoctorado: roleFxlFromKeys(roles, [
+        "formacion_doctoral",
+        "formacion_doctorado",
+      ]),
+      formacionMaestria: roleFxlFromKeys(roles, [
+        "formacion_maestria",
+        "formacion_magister",
+      ]),
     },
     visualSettings: {
       form_bg_color: "#00804E",
@@ -371,7 +443,8 @@ REGLA B — Descarga o disminución sobre el DEFECTO:
   - DEFECTO=16, "tendrán una disminución de 5 horas semanales de docencia directa" → dd = 16 − 5 = 11
 
 REGLA C — Roles sin horas numéricas (roles administrativos altos):
-  El texto dice "tendrán la asignación de N curso(s)" o "tendrán a cargo N horas semanales de docencia (o dos cursos en pregrado y/o posgrado)" sin especificar horas concretas de descarga.
+  Aplica SOLO cuando el texto NO tenga un número de horas semanales explícito y únicamente hable de cursos.
+  Si aparece "X horas semanales ... (o N cursos)", prevalece X horas (REGLA A).
   → dd = "Solo N curso(s)" (texto literal)
   Ejemplos reales observados:
   - "tendrán la asignación de dos cursos (pregrado o posgrado)" → dd = "Solo 2 cursos"
@@ -492,9 +565,10 @@ Devuelve ÚNICAMENTE el objeto JSON. Sin markdown, sin bloques de código, sin t
 
 export async function interpretLineamientosWithGemini(filePath: string): Promise<LineamientosData> {
   const rawText = await extractTextFromPDF(filePath);
+  const relevantText = extractArticles4to6(rawText);
   console.log("=== PROCESANDO PDF CON GEMINI ===");
 
-  if (!rawText.trim()) {
+  if (!relevantText.trim()) {
     throw new Error("El PDF no contiene texto extraíble");
   }
 
@@ -504,14 +578,16 @@ export async function interpretLineamientosWithGemini(filePath: string): Promise
       generationConfig: { responseMimeType: "application/json" },
     });
 
-    const result = await model.generateContent(`${PROMPT}\n\nTexto del documento:\n${rawText}`);
+    const result = await model.generateContent(
+      `${PROMPT}\n\nTexto del documento (solo Artículo 4 al 6):\n${relevantText}`
+    );
     const responseText = result.response.text();
     
     const parsed = JSON.parse(responseText) as unknown;
     return normalizeGeminiOutput(parsed);
   } catch (e) {
     console.warn("Fallo al procesar con Gemini, intentando extracción fallback", e);
-    const fallback = fallbackExtract(rawText);
+    const fallback = fallbackExtract(relevantText);
     return fallback;
   }
 }
