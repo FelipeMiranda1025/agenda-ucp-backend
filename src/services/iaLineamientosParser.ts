@@ -298,6 +298,48 @@ function enrichFromArticlesText(config: LineamientosData, text: string): Lineami
     c.registroHorasSemanales.sinProyecto = sinProyecto;
   }
 
+  const defectoBase = c.docenciaDirecta.sinProyecto > 0 ? c.docenciaDirecta.sinProyecto : sinProyecto ?? 0;
+
+  const inferDdFromRoleBlock = (anchor: RegExp): number | undefined => {
+    const m = text.match(anchor);
+    if (!m || m.index == null) return undefined;
+    const zone = text.slice(Math.max(0, m.index - 80), Math.min(text.length, m.index + 900));
+    const descarga = zone.match(
+      /(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?\s+de\s+(?:descarga|disminuci[oó]n|reducci[oó]n).*?docencia\s+directa/i
+    ) || zone.match(
+      /(?:descarga|disminuci[oó]n|reducci[oó]n)\s+de\s+(\d+(?:[.,]\d+)?)\s*horas?.*?docencia\s+directa/i
+    );
+    if (descarga?.[1]) {
+      const d = Number(descarga[1].replace(",", "."));
+      if (Number.isFinite(d) && defectoBase > 0) return Math.max(0, defectoBase - d);
+    }
+    const direct = zone.match(
+      /(?:asignaci[oó]n\s+de\s+hasta|tendr[aá]n\s+a\s+cargo|tendr[aá]n)\s+(\d+(?:[.,]\d+)?)\s*horas?.{0,60}docencia\s+directa/i
+    ) || zone.match(/(\d+(?:[.,]\d+)?)\s*horas?.{0,80}docencia\s+directa/i);
+    if (direct?.[1]) {
+      const h = Number(direct[1].replace(",", "."));
+      if (Number.isFinite(h)) return h;
+    }
+    return undefined;
+  };
+
+  const invDd = inferDdFromRoleBlock(/investigadores?\s+principales?/i);
+  if (invDd != null && invDd > 0) c.docenciaDirecta.investigadorPrincipal = invDd;
+  const coInvDd = inferDdFromRoleBlock(/co-?\s*investigadores?|coinvestigadores?/i);
+  if (coInvDd != null && coInvDd > 0) c.docenciaDirecta.coinvestigador = coInvDd;
+  const posDd = inferDdFromRoleBlock(/direcci[oó]n\s+de\s+un\s+programa\s+de\s+posgrado/i);
+  if (posDd != null && posDd > 0 && defectoBase > 0) {
+    c.docenciaDirecta.directorPosgradoDescarga = Math.max(0, defectoBase - posDd);
+  }
+  const coordDd = inferDdFromRoleBlock(/coordinaci[oó]n\s+de\s+un\s+[áa]rea/i);
+  if (coordDd != null && coordDd > 0 && defectoBase > 0) {
+    c.docenciaDirecta.coordinacionAreaDescarga = Math.max(0, defectoBase - coordDd);
+  }
+  const formDocDd = inferDdFromRoleBlock(/formaci[oó]n\s+de\s+doctorado|formaci[oó]n\s+doctoral/i);
+  if (formDocDd != null && formDocDd > 0) c.docenciaDirecta.formacionDoctorado = formDocDd;
+  const formMaesDd = inferDdFromRoleBlock(/formaci[oó]n\s+de\s+maestr[íi]a/i);
+  if (formMaesDd != null && formMaesDd > 0) c.docenciaDirecta.formacionMaestria = formMaesDd;
+
   // Formación doctoral: Fxl explícito "Se registrará ... X horas semanales"
   const formDocFxl = captureNumberNear(
     text,

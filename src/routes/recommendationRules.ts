@@ -139,7 +139,7 @@ router.post("/bulk-save", async (req: AuthRequest, res: Response) => {
          SET hours = $1, subjects = $2, updated_at = NOW()
          WHERE id = $3
          RETURNING id`,
-        [Math.round(Number(hours)), Math.round(Number(subjects)), id]
+        [Number(hours), Number(subjects), id]
       );
       if (row) updated++;
     }

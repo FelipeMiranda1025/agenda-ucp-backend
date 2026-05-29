@@ -57,8 +57,8 @@ async function upsertRecommendationRule(input: {
   priority: number;
   touchDefaults?: boolean;
 }): Promise<void> {
-  const h = Math.round(input.hours);
-  const s = Math.round(input.subjects);
+  const h = Number(input.hours);
+  const s = Number(input.subjects);
   if (input.touchDefaults) {
     await query(
       `INSERT INTO public.recommendation_rules
