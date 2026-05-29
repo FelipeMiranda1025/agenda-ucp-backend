@@ -256,6 +256,83 @@ function extractArticles4to6(raw: string): string {
   return scoped.trim() || raw;
 }
 
+function captureNumberNear(text: string, anchor: RegExp, value: RegExp): number | undefined {
+  const m = text.match(anchor);
+  if (!m || m.index == null) return undefined;
+  const start = Math.max(0, m.index - 120);
+  const end = Math.min(text.length, m.index + 800);
+  const zone = text.slice(start, end);
+  const v = zone.match(value);
+  if (!v?.[1]) return undefined;
+  const n = Number(v[1].replace(",", "."));
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function enrichFromArticlesText(config: LineamientosData, text: string): LineamientosData {
+  const c: LineamientosData = JSON.parse(JSON.stringify(config));
+
+  // Art.4 explicit period tuple
+  const art4 = text.match(
+    /per[ií]odo\s+semestral\s*\(de\s*(\d+)\s*semanas,\s*de\s*(\d+)\s*horas.*?total\s+de\s*(\d+)\s*horas\s+al\s+semestre\)/i
+  );
+  if (art4) {
+    c.semanasSemestre = Number(art4[1]);
+    c.horasSemestre = Number(art4[3]);
+  }
+
+  // Core base: docentes sin proyecto
+  const sinProyecto =
+    captureNumberNear(
+      text,
+      /no\s+tengan\s+aprobados\s+proyectos\s+de\s+investigaci[oó]n/i,
+      /(\d+)\s*horas?\s+semanales?\s+de\s+docencia/i
+    ) ??
+    captureNumberNear(
+      text,
+      /docentes\s+sin\s+proyecto/i,
+      /(\d+)\s*horas?\s+semanales?/i
+    );
+  if (sinProyecto != null && sinProyecto > 0) {
+    c.docenciaDirecta.sinProyecto = sinProyecto;
+    c.registroHorasSemanales = c.registroHorasSemanales ?? {};
+    c.registroHorasSemanales.sinProyecto = sinProyecto;
+  }
+
+  // Formación doctoral: Fxl explícito "Se registrará ... X horas semanales"
+  const formDocFxl = captureNumberNear(
+    text,
+    /docentes?\s+en\s+formaci[oó]n\s+de\s+doctorado/i,
+    /registrar[áa]?\s+en\s+el\s+formato\s+de\s+excel\s+(\d+)\s*horas?\s+semanales?/i
+  );
+  if (formDocFxl != null && formDocFxl > 0) {
+    c.registroHorasSemanales = c.registroHorasSemanales ?? {};
+    c.registroHorasSemanales.formacionDoctorado = formDocFxl;
+  }
+
+  // Formación maestría: Fxl explícito
+  const formMaesFxl = captureNumberNear(
+    text,
+    /docentes?\s+en\s+formaci[oó]n\s+de\s+maestr[íi]a/i,
+    /registrar[áa]?\s+en\s+el\s+formato\s+de\s+excel\s+(\d+)\s*horas?\s+semanales?/i
+  );
+  if (formMaesFxl != null && formMaesFxl > 0) {
+    c.registroHorasSemanales = c.registroHorasSemanales ?? {};
+    c.registroHorasSemanales.formacionMaestria = formMaesFxl;
+  }
+
+  // Preparación de clase y asesoría por curso from Art.6 table
+  const prep = text.match(/preparaci[oó]n\s+de\s+clase\s+([0-9]+(?:[.,][0-9]+)?)/i);
+  if (prep?.[1]) {
+    const n = Number(prep[1].replace(",", "."));
+    if (Number.isFinite(n) && n > 0) c.docenciaIndirecta.preparacionClasePorHora = n;
+  }
+  if (/asesor[íi]a\s+estudiantes\s+una\s+hora\s+por\s+cada\s+curso\s+asignado/i.test(text)) {
+    c.docenciaIndirecta.asesoriaPorCurso = 1;
+  }
+
+  return c;
+}
+
 function normalizeGeminiOutput(parsed: unknown): LineamientosData {
   // If Gemini already returned the expected structure, keep it.
   const direct = parsed as Partial<LineamientosData>;
@@ -584,10 +661,11 @@ export async function interpretLineamientosWithGemini(filePath: string): Promise
     const responseText = result.response.text();
     
     const parsed = JSON.parse(responseText) as unknown;
-    return normalizeGeminiOutput(parsed);
+    const normalized = normalizeGeminiOutput(parsed);
+    return enrichFromArticlesText(normalized, relevantText);
   } catch (e) {
     console.warn("Fallo al procesar con Gemini, intentando extracción fallback", e);
     const fallback = fallbackExtract(relevantText);
-    return fallback;
+    return enrichFromArticlesText(fallback, relevantText);
   }
 }
