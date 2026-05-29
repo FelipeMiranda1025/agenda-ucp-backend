@@ -168,84 +168,117 @@ Sigue estos pasos en orden estricto:
 
 ### PASO 1 — Encontrar el DEFECTO (valor base universal)
 
-Busca el párrafo que contenga alguna de estas frases o su equivalente semántico:
-- "no tengan aprobados proyectos de investigación"
+Busca el párrafo del Artículo 6 que hable de docentes SIN proyecto de investigación. Ese párrafo contiene frases como:
+- "Los docentes que no tengan aprobados proyectos de investigación durante el período académico tendrán a cargo X horas semanales de docencia durante el semestre"
 - "docentes sin proyecto"
 - "docentes que no tengan proyecto"
 
-Extrae el número de horas semanales que aparece en esa oración. Ese número es el DEFECTO.
+Extrae el número X de horas semanales. Ese número es el DEFECTO.
 Ejemplo: "tendrán a cargo 18 horas semanales de docencia" → DEFECTO = 18
 
-El DEFECTO es la base aritmética para calcular todos los demás roles. Si no lo encuentras, el JSON completo es inválido — detente y devuelve { "error": "DEFECTO_NO_ENCONTRADO" }.
+El DEFECTO es la base aritmética para calcular todos los demás roles que usen descarga.
+Si no lo encuentras, detente y devuelve: { "error": "DEFECTO_NO_ENCONTRADO" }
 
 ---
 
 ### PASO 2 — Calcular "dd" (Docencia Directa) para cada rol
 
-Para cada rol que aparezca en el documento, aplica EXACTAMENTE UNA de estas reglas:
+Para cada rol del Artículo 6, aplica EXACTAMENTE UNA de estas tres reglas según lo que diga el texto:
 
-REGLA A — Carga directa:
-  Si el texto dice "tendrán X horas semanales de docencia directa" → dd = X
+REGLA A — Carga directa explícita:
+  El texto dice "tendrán X horas semanales de docencia directa" o "tendrán una asignación de hasta X horas semanales de docencia directa".
+  → dd = X  (usar el número X tal cual, sin restar nada)
+  Ejemplos reales observados:
+  - "tendrán 10 horas semanales de docencia directa" → dd = 10
+  - "tendrán una asignación de hasta 8 horas semanales de docencia directa" → dd = 8
+  - "tendrán una asignación de hasta 9 horas semanales de docencia directa" → dd = 9
+  - "tendrán una asignación de hasta de 12 horas de docencia directa" → dd = 12
 
-REGLA B — Descarga o disminución:
-  Si el texto dice "tendrán X horas de descarga" o "disminución de X horas" → dd = DEFECTO − X
+REGLA B — Descarga o disminución sobre el DEFECTO:
+  El texto dice "tendrán X horas semanales de descarga en docencia directa" o "tendrán una disminución/descarga de X horas semanales de docencia directa" o "podrán tener una reducción de hasta X horas semanales de docencia directa".
+  → dd = DEFECTO − X  (restar X al DEFECTO)
+  Ejemplos reales observados:
+  - DEFECTO=18, "tendrán 6 horas semanales de descarga en docencia directa" → dd = 18 − 6 = 12
+  - DEFECTO=18, "tendrán una descarga de 5 horas en docencia directa" → dd = 18 − 5 = 13
+  - DEFECTO=18, "podrán tener una reducción de hasta 3 horas semanales de docencia directa" → dd = 18 − 3 = 15
+  - DEFECTO=16, "tendrán una disminución de 5 horas semanales de docencia directa" → dd = 16 − 5 = 11
 
-REGLA DE ACUMULACIÓN (cuando un docente ejerce el mismo rol dos o más veces):
-  Si el documento indica que la descarga se puede acumular (ej. dos programas de posgrado):
-  dd_x2 = DEFECTO − X − X
-  Fxl_x2 = Fxl_x1 × 2
-  Crea una clave separada para cada nivel de acumulación (ej. director_posgrado_x1, director_posgrado_x2).
+REGLA C — Roles sin horas numéricas (roles administrativos altos):
+  El texto dice "tendrán la asignación de N curso(s)" o "tendrán a cargo N horas semanales de docencia (o dos cursos en pregrado y/o posgrado)" sin especificar horas concretas de descarga.
+  → dd = "Solo N curso(s)" (texto literal)
+  Ejemplos reales observados:
+  - "tendrán la asignación de dos cursos (pregrado o posgrado)" → dd = "Solo 2 cursos"
+  - "tendrán la asignación de un curso en su plan de trabajo semestral" → dd = "Solo 1 curso"
+  - "tendrán a cargo 6 horas semanales de docencia (o dos cursos en pregrado y/o posgrado)" → dd = "Solo 2 cursos"
 
-REGLA ESPECIAL — Roles sin horas numéricas:
-  Si el texto dice "solo dictará N curso(s)" sin mencionar un número de horas → dd = "Solo N curso(s)" (texto literal).
+REGLA DE ACUMULACIÓN (aplica solo a Director de Posgrado):
+  El documento siempre incluye una nota que dice "Un mismo docente de planta podrá asumir máximo 2 direcciones de posgrados, siendo acumulable la disminución de docencia directa".
+  → Siempre genera DOS entradas separadas:
+    director_posgrado_x1: dd = DEFECTO − X,  Fxl = Fxl_unitario
+    director_posgrado_x2: dd = DEFECTO − X − X,  Fxl = Fxl_unitario × 2
 
 ---
 
 ### PASO 3 — Extraer "Fxl" (horas a registrar en Formato Excel) para cada rol
 
-Para cada rol, busca en el párrafo correspondiente alguna de estas frases:
+Inmediatamente después de cada párrafo de rol, busca la frase de registro. Esa frase siempre aparece en el mismo párrafo o en el párrafo siguiente al del rol. Tiene alguna de estas formas:
+- "Se registrará en el formato de Excel X horas semanales de investigación (...)"
+- "Se registrará en el formato de Excel X horas semanales (...)"
 - "Se registrará en el formato de Excel X horas semanales"
-- "registrará X horas semanales de [actividad]"
-- "formato Excel: X horas semanales"
 
-El número X es el valor Fxl para ese rol.
+El número X justo después de "Excel" es el valor Fxl para ese rol.
 
-Si esa frase NO aparece para un rol → Fxl = "No aplica"
-Si el texto dice explícitamente que no aplica → Fxl = "No aplica"
+Ejemplos reales observados por rol:
+- Investigador principal → "Se registrará en el formato de Excel 11 horas semanales de investigación" → Fxl = 11
+- Co-investigador → "Se registrará en el formato de Excel 6 horas semanales de investigación" → Fxl = 6
+- Director posgrado x1 → "Se registrará en el formato de Excel 9 horas semanales" → Fxl = 9
+- Director posgrado x2 → Fxl = 9 × 2 = 18 (por acumulación, ver Paso 2)
+- Coordinador de área → "Se registrará en el formato de Excel 6 horas semanales" → Fxl = 6
+- Formación doctoral → "Se registrará en el formato de Excel 17 horas semanales" → Fxl = 17  (puede variar: 15 en otros semestres)
+- Formación maestría → "Se registrará en el formato de Excel 9 horas semanales" → Fxl = 9  (puede variar: 7 en otros semestres)
+
+Si la frase "Se registrará en el formato de Excel" NO aparece para un rol → Fxl = "No aplica"
+Roles que históricamente NO tienen frase de registro (Fxl = "No aplica"):
+- Defecto (sin proyecto)
+- Jefes de departamento / Directores de programa
+- Decanos / Vicerrector / Director de Doctorado
+- Formación pedagógica
 
 ---
 
 ### PASO 4 — Extraer parámetros generales y actividades complementarias
 
-Busca y extrae los siguientes valores exactamente como aparecen en el documento:
+PARÁMETROS GENERALES — busca en el Artículo 4 la frase:
+"período semestral (de X semanas, de Y horas cada una, para un total de Z horas al semestre)"
+→ semanasSemestre = X, horasContratoSemanal = Y, totalHorasSemestre = Z
+Valores históricos estables (pueden cambiar): X=23, Y=40, Z=920
 
-Parámetros generales:
-- Semanas por semestre
-- Horas semanales totales por contrato
-- Total horas semestrales (puede ser semanas × horas/semana)
+ACTIVIDADES COMPLEMENTARIAS — busca al final del Artículo 6 la tabla de tiempos. Esa tabla siempre aparece con este formato:
+"Preparación de clase    0,5 hora por cada hora programada"
+"Asesoría Estudiantes    una hora por cada curso asignado"
+"Líder Colectivo    4 horas (semanal)"
+"Participación en Colectivo    2 horas (semanal)"
+"Asesoría Práctica    10 horas (semestre)"
+"Asesoría Trabajo de Grado Pregrado    15 horas (semestre)"
+"Asesoría Trabajo de Grado Posgrado (Maestría)    30 horas (semestre)"
+"Asesoría Trabajo de Grado Posgrado (Doctorado)    45 horas (semestre)"
+"Comité Curricular    3 horas (semanal)"
+"Comité Básico de Facultad    2 horas (semanal)"
+"Líder Grupo de Investigación    4 horas (semanal)"
+"Líder de Revista    2 horas (semanal)"
 
-Actividades (respeta si el valor es semanal o semestral según el texto):
-- Preparación de clase: horas por cada hora programada
-- Asesoría a estudiantes: horas por curso asignado
-- Líder de colectivo: horas semanales
-- Participación en colectivo: horas semanales
-- Asesoría a práctica: horas semestrales
-- Asesoría trabajo de grado pregrado: horas semestrales
-- Asesoría trabajo de grado maestría: horas semestrales
-- Asesoría trabajo de grado doctorado: horas semestrales
-- Comité curricular: horas semanales
-- Comité básico de facultad: horas semanales
-- Líder grupo de investigación: horas semanales
-- Líder de revista: horas semanales
+Extrae cada valor numérico exactamente como aparece en el texto. Si "una hora" está escrito en palabras, conviértelo a 1.
+Si un número tiene coma decimal (ej. "0,5") conviértelo a punto decimal (0.5).
 
 ---
 
 ### REGLAS DE ROBUSTEZ (aplican siempre, sin importar el semestre)
 
-- Si un rol desaparece del PDF respecto a semestres anteriores → omite su clave del JSON.
+- NUNCA uses valores de semestres anteriores. Cada PDF es independiente.
+- Aplica REGLA A o REGLA B según la redacción exacta del párrafo. La misma clave puede usar REGLA A en un semestre y REGLA B en otro; la redacción del PDF manda siempre.
+- Si un rol desaparece del PDF → omite su clave del JSON.
 - Si aparece un rol nuevo no contemplado en la estructura → agrégalo bajo "valores_roles" con su nombre en snake_case.
-- Si un valor es ambiguo o no fue encontrado → usa el string "NO_ENCONTRADO" como valor.
-- Si un número tiene coma decimal (ej. "0,5") → conviértelo a punto decimal (0.5).
+- Si un valor es ambiguo o no fue encontrado → usa el string "NO_ENCONTRADO".
 - No inferas ni calcules valores que no estén explícitamente escritos en el texto del PDF.
 
 ---
@@ -265,14 +298,14 @@ Devuelve ÚNICAMENTE el objeto JSON. Sin markdown, sin bloques de código, sin t
     "defecto": { "dd": 0, "Fxl": "No aplica" },
     "investigador_principal": { "dd": 0, "Fxl": 0 },
     "co_investigador": { "dd": 0, "Fxl": 0 },
-    "jefes_depto_director_programa": { "dd": "Solo N cursos", "Fxl": "No aplica" },
+    "jefes_depto_director_programa": { "dd": "Solo 2 cursos", "Fxl": "No aplica" },
     "director_posgrado_x1": { "dd": 0, "Fxl": 0 },
     "director_posgrado_x2": { "dd": 0, "Fxl": 0 },
     "coordinador_area": { "dd": 0, "Fxl": 0 },
-    "decano_vicerrector_director_doctorado": { "dd": "Solo N cursos", "Fxl": "No aplica" },
+    "decano_vicerrector_director_doctorado": { "dd": "Solo 1 curso", "Fxl": "No aplica" },
     "formacion_doctoral": { "dd": 0, "Fxl": 0 },
     "formacion_maestria": { "dd": 0, "Fxl": 0 },
-    "formacion_pedagogica": { "dd": 0, "Fxl": 0 }
+    "formacion_pedagogica": { "dd": 0, "Fxl": "No aplica" }
   },
   "otras_actividades": {
     "preparacion_clase": 0.0,
@@ -289,6 +322,7 @@ Devuelve ÚNICAMENTE el objeto JSON. Sin markdown, sin bloques de código, sin t
     "lider_revista_semanal": 0
   }
 }`;
+
 export async function interpretLineamientosWithGemini(filePath: string): Promise<LineamientosData> {
   const rawText = await extractTextFromPDF(filePath);
   console.log("=== PROCESANDO PDF CON GEMINI ===");
