@@ -385,6 +385,58 @@ function enrichFromArticlesText(config: LineamientosData, text: string): Lineami
     return Number.isFinite(n) && n > 0 ? n : undefined;
   };
 
+  const roleStartPatterns: RegExp[] = [
+    /investigador\s+principal(?:es)?(?:\s+con\s+proyecto\s+aprobado)?/i,
+    /co-?\s*investigador(?:es)?|coinvestigador(?:es)?/i,
+    /jefes?\s+de\s+departamento|director(?:es)?\s+de\s+programa/i,
+    /direcci[oó]n\s+de\s+un\s+programa\s+de\s+posgrado/i,
+    /coordinaci[oó]n\s+de\s+un\s+[áa]rea/i,
+    /decanos?|vicerrector|director\s+de\s+doctorado/i,
+    /formaci[oó]n\s+de\s+doctorado|formaci[oó]n\s+doctoral|docentes?\s+en\s+formaci[oó]n\s+de\s+doctorado/i,
+    /formaci[oó]n\s+de\s+maestr[íi]a|docentes?\s+en\s+formaci[oó]n\s+de\s+maestr[íi]a/i,
+    /formaci[oó]n\s+pedag[oó]gica/i,
+  ];
+
+  const getRoleZone = (anchor: RegExp): string | undefined => {
+    const m = text.match(anchor);
+    if (!m || m.index == null) return undefined;
+    const start = Math.max(0, m.index - 40);
+    let end = text.length;
+    for (const next of roleStartPatterns) {
+      if (String(next) === String(anchor)) continue;
+      const rel = text.slice(start + 1).search(next);
+      if (rel >= 0) {
+        const abs = start + 1 + rel;
+        if (abs > start && abs < end) end = abs;
+      }
+    }
+    return text.slice(start, end);
+  };
+
+  const descargaFromZone = (zone?: string): number | undefined => {
+    if (!zone) return undefined;
+    const m =
+      zone.match(
+        /(?:descarga|disminuci[oó]n|reducci[oó]n)[^.\n]{0,90}?\(?(\d+(?:[.,]\d+)?)\)?\s*horas?/i
+      ) ||
+      zone.match(
+        /de\s+hasta\s+(\d+(?:[.,]\d+)?)\s*horas?[^.\n]{0,80}(?:descarga|disminuci[oó]n|reducci[oó]n)/i
+      );
+    if (!m?.[1]) return undefined;
+    const n = Number(m[1].replace(",", "."));
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const excelFromZone = (zone?: string): number | undefined => {
+    if (!zone) return undefined;
+    const m =
+      zone.match(/excel[^.\n]{0,100}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i) ||
+      zone.match(/formato\s+de\s+excel[^.\n]{0,100}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i);
+    if (!m?.[1]) return undefined;
+    const n = Number(m[1].replace(",", "."));
+    return Number.isFinite(n) ? n : undefined;
+  };
+
   const invDd = inferRoleDdPreferringDescarga(
     /investigador\s+principal(?:es)?(?:\s+con\s+proyecto\s+aprobado)?/i
   );
@@ -481,6 +533,25 @@ function enrichFromArticlesText(config: LineamientosData, text: string): Lineami
     /excel[^.\n]{0,90}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i
   );
   if (coordRegistroStrict != null && coordRegistroStrict > 0) c.registroHorasSemanales.coordinacionArea = coordRegistroStrict;
+
+  // Final strict fixes for reported mismatches (extract from exact role block).
+  const invZone = getRoleZone(/investigador\s+principal(?:es)?(?:\s+con\s+proyecto\s+aprobado)?/i);
+  const invDesc = descargaFromZone(invZone);
+  const invXls = excelFromZone(invZone);
+  if (invDesc != null && defectoBase > 0) {
+    c.docenciaDirecta.investigadorPrincipal = Math.max(0, defectoBase - invDesc);
+  }
+  if (invXls != null && invXls > 0) c.registroHorasSemanales.investigadorPrincipal = invXls;
+
+  const maesZone = getRoleZone(
+    /formaci[oó]n\s+de\s+maestr[íi]a|docentes?\s+en\s+formaci[oó]n\s+de\s+maestr[íi]a/i
+  );
+  const maesDesc = descargaFromZone(maesZone);
+  const maesXls = excelFromZone(maesZone);
+  if (maesDesc != null && defectoBase > 0) {
+    c.docenciaDirecta.formacionMaestria = Math.max(0, defectoBase - maesDesc);
+  }
+  if (maesXls != null && maesXls > 0) c.registroHorasSemanales.formacionMaestria = maesXls;
 
   // Formación doctoral: Fxl explícito "Se registrará ... X horas semanales"
   const formDocFxl = captureNumberNear(
