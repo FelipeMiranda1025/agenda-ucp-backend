@@ -597,6 +597,37 @@ function enrichFromArticlesText(config: LineamientosData, text: string): Lineami
     c.registroHorasSemanales.investigadorPrincipal = invStrictXls;
   }
 
+  // Global fallback for Art. 6.a wording variants (single-source correction).
+  const invDescGlobal =
+    captureNumberNear(
+      text,
+      /investigador(?:es)?\s+principal(?:es)?/i,
+      /(?:descarga|disminuci[oó]n|reducci[oó]n)[^.\n]{0,120}?\(?(\d+(?:[.,]\d+)?)\)?\s*horas?/i
+    ) ??
+    captureNumberNear(
+      text,
+      /investigador(?:es)?\s+principal(?:es)?/i,
+      /(\d+(?:[.,]\d+)?)\s*horas?[^.\n]{0,120}(?:descarga|disminuci[oó]n|reducci[oó]n)/i
+    );
+  if (invDescGlobal != null && defectoBase > 0) {
+    c.docenciaDirecta.investigadorPrincipal = Math.max(0, defectoBase - invDescGlobal);
+  }
+
+  const invExcelGlobal =
+    captureNumberNear(
+      text,
+      /investigador(?:es)?\s+principal(?:es)?/i,
+      /excel[^.\n]{0,120}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?[^.\n]{0,100}investigaci[oó]n/i
+    ) ??
+    captureNumberNear(
+      text,
+      /investigador(?:es)?\s+principal(?:es)?/i,
+      /registr(?:ar|ará|a)[^.\n]{0,150}?excel[^.\n]{0,100}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i
+    );
+  if (invExcelGlobal != null && invExcelGlobal > 0) {
+    c.registroHorasSemanales.investigadorPrincipal = invExcelGlobal;
+  }
+
   const maesZone = getRoleZone(
     /formaci[oó]n\s+de\s+maestr[íi]a|docentes?\s+en\s+formaci[oó]n\s+de\s+maestr[íi]a/i
   );
