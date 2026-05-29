@@ -17,7 +17,7 @@ export const STANDARD_RULE_VALUES: Record<string, RuleValuePair> = {
   admin_dir_depto_pregrado: { docenciaDirecta: 6, horasSemanales: 6 },
   admin_dir_posgrado_2: { docenciaDirecta: 6, horasSemanales: 6 },
   admin_dir_posgrado_1: { docenciaDirecta: 7, horasSemanales: 9 },
-  admin_coord_area: { docenciaDirecta: 13, horasSemanales: 6 },
+  admin_coord_area: { docenciaDirecta: 10, horasSemanales: 6 },
   inv_1p_2c: { docenciaDirecta: 6, horasSemanales: 17 },
   inv_2p: { docenciaDirecta: 4, horasSemanales: 22 },
   inv_1p: { docenciaDirecta: 10, horasSemanales: 11 },
@@ -41,8 +41,14 @@ function registro(
   return v != null && v > 0 ? v : fallback;
 }
 
-function docenciaFromDescarga(descarga: number): number {
-  return Math.max(0, BASE_DOCENCIA_DIRECTA - (descarga || 0));
+function docenciaBase(config: LineamientosData): number {
+  return config.docenciaDirecta.sinProyecto > 0
+    ? config.docenciaDirecta.sinProyecto
+    : BASE_DOCENCIA_DIRECTA;
+}
+
+function docenciaFromDescarga(descarga: number, config: LineamientosData): number {
+  return Math.max(0, docenciaBase(config) - (descarga || 0));
 }
 
 /**
@@ -54,8 +60,8 @@ export function ruleValuePairForStandardKey(
 ): RuleValuePair {
   const dd = config.docenciaDirecta;
   const defaults = STANDARD_RULE_VALUES[ruleKey] ?? {
-    docenciaDirecta: BASE_DOCENCIA_DIRECTA,
-    horasSemanales: BASE_DOCENCIA_DIRECTA,
+    docenciaDirecta: docenciaBase(config),
+    horasSemanales: docenciaBase(config),
   };
 
   switch (ruleKey) {
@@ -80,7 +86,7 @@ export function ruleValuePairForStandardKey(
       return {
         docenciaDirecta:
           dd.directorPosgradoDescarga > 0
-            ? docenciaFromDescarga(dd.directorPosgradoDescarga)
+            ? docenciaFromDescarga(dd.directorPosgradoDescarga, config)
             : defaults.docenciaDirecta,
         horasSemanales: registro(
           config,
@@ -95,7 +101,10 @@ export function ruleValuePairForStandardKey(
       };
     case "admin_coord_area":
       return {
-        docenciaDirecta: defaults.docenciaDirecta,
+        docenciaDirecta:
+          dd.coordinacionAreaDescarga > 0
+            ? docenciaFromDescarga(dd.coordinacionAreaDescarga, config)
+            : defaults.docenciaDirecta,
         horasSemanales: registro(
           config,
           "coordinacionArea",
@@ -170,13 +179,13 @@ function resolveDocenciaDirecta(
   config: LineamientosData
 ): number {
   if (ruleKey === "director_posgrado_descarga") {
-    return docenciaFromDescarga(config.docenciaDirecta.directorPosgradoDescarga || rawHours);
+    return docenciaFromDescarga(config.docenciaDirecta.directorPosgradoDescarga || rawHours, config);
   }
   if (ruleKey === "coordinacion_area_descarga") {
-    return docenciaFromDescarga(config.docenciaDirecta.coordinacionAreaDescarga || rawHours);
+    return docenciaFromDescarga(config.docenciaDirecta.coordinacionAreaDescarga || rawHours, config);
   }
   if (DESCARGA_CONFIG_KEYS.has(ruleKey)) {
-    return docenciaFromDescarga(rawHours);
+    return docenciaFromDescarga(rawHours, config);
   }
   return rawHours;
 }
