@@ -300,6 +300,12 @@ function enrichFromArticlesText(config: LineamientosData, text: string): Lineami
   }
 
   const defectoBase = c.docenciaDirecta.sinProyecto > 0 ? c.docenciaDirecta.sinProyecto : sinProyecto ?? 0;
+  const num = (s: string): number | undefined => {
+    const m = s.match(/\d+(?:[.,]\d+)?/);
+    if (!m) return undefined;
+    const n = Number(m[0].replace(",", "."));
+    return Number.isFinite(n) ? n : undefined;
+  };
 
   const inferDdFromRoleBlock = (anchor: RegExp): number | undefined => {
     const m = text.match(anchor);
@@ -331,15 +337,17 @@ function enrichFromArticlesText(config: LineamientosData, text: string): Lineami
 
     // Prefer "descarga/disminución/reducción" because DD must be (defecto - descarga).
     const descargaPatterns = [
-      /(?:descarga|disminuci[oó]n|reducci[oó]n)\s+de\s+hasta\s+(\d+(?:[.,]\d+)?)\s*horas?.{0,120}docencia\s+directa/i,
-      /(?:descarga|disminuci[oó]n|reducci[oó]n)\s+de\s+(\d+(?:[.,]\d+)?)\s*horas?.{0,120}docencia\s+directa/i,
-      /(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?\s+de\s+(?:descarga|disminuci[oó]n|reducci[oó]n).{0,120}docencia\s+directa/i,
+      /(?:descarga|disminuci[oó]n|reducci[oó]n)\s+de\s+hasta\s+([^(.\n]*\(?\d+(?:[.,]\d+)?\)?)[^.\n]{0,160}docencia\s+directa/i,
+      /(?:descarga|disminuci[oó]n|reducci[oó]n)\s+de\s+([^(.\n]*\(?\d+(?:[.,]\d+)?\)?)[^.\n]{0,160}docencia\s+directa/i,
+      /([^(.\n]*\(?\d+(?:[.,]\d+)?\)?)\s*horas?\s+semanales?\s+de\s+(?:descarga|disminuci[oó]n|reducci[oó]n)[^.\n]{0,160}docencia\s+directa/i,
     ];
     for (const pattern of descargaPatterns) {
       const hit = zone.match(pattern);
       if (hit?.[1] && defectoBase > 0) {
-        const descarga = Number(hit[1].replace(",", "."));
-        if (Number.isFinite(descarga)) return Math.max(0, defectoBase - descarga);
+        const descarga = num(hit[1]);
+        if (descarga != null && Number.isFinite(descarga)) {
+          return Math.max(0, defectoBase - descarga);
+        }
       }
     }
 
@@ -362,9 +370,16 @@ function enrichFromArticlesText(config: LineamientosData, text: string): Lineami
     const m = text.match(anchor);
     if (!m || m.index == null) return undefined;
     const zone = text.slice(Math.max(0, m.index - 100), Math.min(text.length, m.index + 1300));
-    const hit = zone.match(
-      /registr(?:ar|ará|a)\s+en\s+el\s+formato\s+de\s+excel\s+(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i
-    );
+    const hit =
+      zone.match(
+        /registr(?:ar|ará|a)\s+en\s+el\s+formato\s+de\s+excel[^.\n]{0,80}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i
+      ) ||
+      zone.match(
+        /formato\s+de\s+excel[^.\n]{0,80}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i
+      ) ||
+      zone.match(
+        /excel[^.\n]{0,50}?\((\d+(?:[.,]\d+)?)\)[^.\n]{0,50}?horas?\s+semanales?/i
+      );
     if (!hit?.[1]) return undefined;
     const n = Number(hit[1].replace(",", "."));
     return Number.isFinite(n) && n > 0 ? n : undefined;
@@ -409,6 +424,63 @@ function enrichFromArticlesText(config: LineamientosData, text: string): Lineami
     /coordinaci[oó]n\s+de\s+un\s+[áa]rea/i
   );
   if (coordFxl != null) c.registroHorasSemanales.coordinacionArea = coordFxl;
+
+  // Strict role overrides (avoid cross-role numeric leakage).
+  const invDescarga = captureNumberNear(
+    text,
+    /investigador\s+principal(?:es)?(?:\s+con\s+proyecto\s+aprobado)?/i,
+    /(?:descarga|disminuci[oó]n|reducci[oó]n)[^.\n]{0,80}?\(?(\d+(?:[.,]\d+)?)\)?\s*horas?/i
+  );
+  if (invDescarga != null && defectoBase > 0) {
+    c.docenciaDirecta.investigadorPrincipal = Math.max(0, defectoBase - invDescarga);
+  }
+  const invRegistro = captureNumberNear(
+    text,
+    /investigador\s+principal(?:es)?(?:\s+con\s+proyecto\s+aprobado)?/i,
+    /excel[^.\n]{0,90}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i
+  );
+  if (invRegistro != null && invRegistro > 0) c.registroHorasSemanales.investigadorPrincipal = invRegistro;
+
+  const coInvDescarga = captureNumberNear(
+    text,
+    /co-?\s*investigador(?:es)?|coinvestigador(?:es)?/i,
+    /(?:descarga|disminuci[oó]n|reducci[oó]n)[^.\n]{0,80}?\(?(\d+(?:[.,]\d+)?)\)?\s*horas?/i
+  );
+  if (coInvDescarga != null && defectoBase > 0) {
+    c.docenciaDirecta.coinvestigador = Math.max(0, defectoBase - coInvDescarga);
+  }
+  const coInvRegistro = captureNumberNear(
+    text,
+    /co-?\s*investigador(?:es)?|coinvestigador(?:es)?/i,
+    /excel[^.\n]{0,90}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i
+  );
+  if (coInvRegistro != null && coInvRegistro > 0) c.registroHorasSemanales.coinvestigador = coInvRegistro;
+
+  const posDescarga = captureNumberNear(
+    text,
+    /direcci[oó]n\s+de\s+un\s+programa\s+de\s+posgrado/i,
+    /(?:descarga|disminuci[oó]n|reducci[oó]n)[^.\n]{0,80}?\(?(\d+(?:[.,]\d+)?)\)?\s*horas?/i
+  );
+  if (posDescarga != null && posDescarga >= 0) c.docenciaDirecta.directorPosgradoDescarga = posDescarga;
+  const posRegistro = captureNumberNear(
+    text,
+    /direcci[oó]n\s+de\s+un\s+programa\s+de\s+posgrado/i,
+    /excel[^.\n]{0,90}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i
+  );
+  if (posRegistro != null && posRegistro > 0) c.registroHorasSemanales.directorPosgrado = posRegistro;
+
+  const coordDescarga = captureNumberNear(
+    text,
+    /coordinaci[oó]n\s+de\s+un\s+[áa]rea/i,
+    /(?:descarga|disminuci[oó]n|reducci[oó]n)[^.\n]{0,80}?\(?(\d+(?:[.,]\d+)?)\)?\s*horas?/i
+  );
+  if (coordDescarga != null && coordDescarga >= 0) c.docenciaDirecta.coordinacionAreaDescarga = coordDescarga;
+  const coordRegistroStrict = captureNumberNear(
+    text,
+    /coordinaci[oó]n\s+de\s+un\s+[áa]rea/i,
+    /excel[^.\n]{0,90}?(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i
+  );
+  if (coordRegistroStrict != null && coordRegistroStrict > 0) c.registroHorasSemanales.coordinacionArea = coordRegistroStrict;
 
   // Formación doctoral: Fxl explícito "Se registrará ... X horas semanales"
   const formDocFxl = captureNumberNear(
