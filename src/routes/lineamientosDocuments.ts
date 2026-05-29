@@ -19,6 +19,14 @@ import {
 
 const router = Router();
 
+function normalizePdfTitle(name: string): string {
+  return name
+    .trim()
+    .replace(/\.pdf$/i, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
 // Configuración de multer para almacenar el archivo temporalmente en disco
 const upload = multer({
   dest: path.resolve(process.cwd(), process.env.UPLOADS_DIR || "uploads"),
@@ -42,6 +50,24 @@ router.post("/upload", requireAuth, requireVicerrector, upload.single("pdf"), as
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No se envió ningún archivo PDF" });
+    }
+
+    const incomingTitle = normalizePdfTitle(req.file.originalname);
+    const existingByTitle = await queryOne<{ id: string; file_name: string }>(
+      `SELECT id, file_name
+       FROM public.lineamientos_documents
+       WHERE LOWER(TRIM(REGEXP_REPLACE(file_name, '\\.pdf$', '', 'i'))) = $1
+       LIMIT 1`,
+      [incomingTitle]
+    );
+    if (existingByTitle) {
+      if (fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(400).json({
+        message:
+          "Este documento ya fue subido anteriormente. Seleccione otro documento para cargar.",
+      });
     }
 
     // 1. Interpretar el PDF con Gemini (ver iaLineamientosParser.ts; fallback regex si falla)
