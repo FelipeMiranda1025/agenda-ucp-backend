@@ -270,6 +270,7 @@ function captureNumberNear(text: string, anchor: RegExp, value: RegExp): number 
 
 function enrichFromArticlesText(config: LineamientosData, text: string): LineamientosData {
   const c: LineamientosData = JSON.parse(JSON.stringify(config));
+  c.registroHorasSemanales = c.registroHorasSemanales ?? {};
 
   // Art.4 explicit period tuple
   const art4 = text.match(
@@ -323,22 +324,91 @@ function enrichFromArticlesText(config: LineamientosData, text: string): Lineami
     return undefined;
   };
 
-  const invDd = inferDdFromRoleBlock(/investigadores?\s+principales?/i);
+  const inferRoleDdPreferringDescarga = (anchor: RegExp): number | undefined => {
+    const m = text.match(anchor);
+    if (!m || m.index == null) return undefined;
+    const zone = text.slice(Math.max(0, m.index - 120), Math.min(text.length, m.index + 1200));
+
+    // Prefer "descarga/disminución/reducción" because DD must be (defecto - descarga).
+    const descargaPatterns = [
+      /(?:descarga|disminuci[oó]n|reducci[oó]n)\s+de\s+hasta\s+(\d+(?:[.,]\d+)?)\s*horas?.{0,120}docencia\s+directa/i,
+      /(?:descarga|disminuci[oó]n|reducci[oó]n)\s+de\s+(\d+(?:[.,]\d+)?)\s*horas?.{0,120}docencia\s+directa/i,
+      /(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?\s+de\s+(?:descarga|disminuci[oó]n|reducci[oó]n).{0,120}docencia\s+directa/i,
+    ];
+    for (const pattern of descargaPatterns) {
+      const hit = zone.match(pattern);
+      if (hit?.[1] && defectoBase > 0) {
+        const descarga = Number(hit[1].replace(",", "."));
+        if (Number.isFinite(descarga)) return Math.max(0, defectoBase - descarga);
+      }
+    }
+
+    // Fallback to explicit direct-hour phrasing.
+    const directPatterns = [
+      /(?:asignaci[oó]n\s+de\s+hasta|tendr[aá]n\s+a\s+cargo|tendr[aá]n)\s+(\d+(?:[.,]\d+)?)\s*horas?.{0,80}docencia\s+directa/i,
+      /(\d+(?:[.,]\d+)?)\s*horas?.{0,100}docencia\s+directa/i,
+    ];
+    for (const pattern of directPatterns) {
+      const hit = zone.match(pattern);
+      if (hit?.[1]) {
+        const dd = Number(hit[1].replace(",", "."));
+        if (Number.isFinite(dd)) return dd;
+      }
+    }
+    return undefined;
+  };
+
+  const inferRegistroExcelHoursNearRole = (anchor: RegExp): number | undefined => {
+    const m = text.match(anchor);
+    if (!m || m.index == null) return undefined;
+    const zone = text.slice(Math.max(0, m.index - 100), Math.min(text.length, m.index + 1300));
+    const hit = zone.match(
+      /registr(?:ar|ará|a)\s+en\s+el\s+formato\s+de\s+excel\s+(\d+(?:[.,]\d+)?)\s*horas?\s+semanales?/i
+    );
+    if (!hit?.[1]) return undefined;
+    const n = Number(hit[1].replace(",", "."));
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  };
+
+  const invDd = inferRoleDdPreferringDescarga(
+    /investigador\s+principal(?:es)?(?:\s+con\s+proyecto\s+aprobado)?/i
+  );
   if (invDd != null && invDd > 0) c.docenciaDirecta.investigadorPrincipal = invDd;
-  const coInvDd = inferDdFromRoleBlock(/co-?\s*investigadores?|coinvestigadores?/i);
+  const coInvDd = inferRoleDdPreferringDescarga(/co-?\s*investigador(?:es)?|coinvestigador(?:es)?/i);
   if (coInvDd != null && coInvDd > 0) c.docenciaDirecta.coinvestigador = coInvDd;
-  const posDd = inferDdFromRoleBlock(/direcci[oó]n\s+de\s+un\s+programa\s+de\s+posgrado/i);
+  const posDd = inferRoleDdPreferringDescarga(/direcci[oó]n\s+de\s+un\s+programa\s+de\s+posgrado/i);
   if (posDd != null && posDd > 0 && defectoBase > 0) {
     c.docenciaDirecta.directorPosgradoDescarga = Math.max(0, defectoBase - posDd);
   }
-  const coordDd = inferDdFromRoleBlock(/coordinaci[oó]n\s+de\s+un\s+[áa]rea/i);
+  const coordDd = inferRoleDdPreferringDescarga(/coordinaci[oó]n\s+de\s+un\s+[áa]rea/i);
   if (coordDd != null && coordDd > 0 && defectoBase > 0) {
     c.docenciaDirecta.coordinacionAreaDescarga = Math.max(0, defectoBase - coordDd);
   }
-  const formDocDd = inferDdFromRoleBlock(/formaci[oó]n\s+de\s+doctorado|formaci[oó]n\s+doctoral/i);
+  const formDocDd = inferRoleDdPreferringDescarga(
+    /docentes?\s+en\s+formaci[oó]n\s+(?:de\s+)?(?:doctorado|doctoral)|formaci[oó]n\s+de\s+doctorado|formaci[oó]n\s+doctoral/i
+  );
   if (formDocDd != null && formDocDd > 0) c.docenciaDirecta.formacionDoctorado = formDocDd;
-  const formMaesDd = inferDdFromRoleBlock(/formaci[oó]n\s+de\s+maestr[íi]a/i);
+  const formMaesDd = inferRoleDdPreferringDescarga(
+    /docentes?\s+en\s+formaci[oó]n\s+(?:de\s+)?maestr[íi]a|formaci[oó]n\s+de\s+maestr[íi]a/i
+  );
   if (formMaesDd != null && formMaesDd > 0) c.docenciaDirecta.formacionMaestria = formMaesDd;
+
+  const invFxl = inferRegistroExcelHoursNearRole(
+    /investigador\s+principal(?:es)?(?:\s+con\s+proyecto\s+aprobado)?/i
+  );
+  if (invFxl != null) c.registroHorasSemanales.investigadorPrincipal = invFxl;
+  const coInvFxl = inferRegistroExcelHoursNearRole(
+    /co-?\s*investigador(?:es)?|coinvestigador(?:es)?/i
+  );
+  if (coInvFxl != null) c.registroHorasSemanales.coinvestigador = coInvFxl;
+  const dirPosFxl = inferRegistroExcelHoursNearRole(
+    /direcci[oó]n\s+de\s+un\s+programa\s+de\s+posgrado/i
+  );
+  if (dirPosFxl != null) c.registroHorasSemanales.directorPosgrado = dirPosFxl;
+  const coordFxl = inferRegistroExcelHoursNearRole(
+    /coordinaci[oó]n\s+de\s+un\s+[áa]rea/i
+  );
+  if (coordFxl != null) c.registroHorasSemanales.coordinacionArea = coordFxl;
 
   // Formación doctoral: Fxl explícito "Se registrará ... X horas semanales"
   const formDocFxl = captureNumberNear(
