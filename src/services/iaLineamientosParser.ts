@@ -160,6 +160,173 @@ export interface LineamientosData {
   };
 }
 
+interface GeminiRoleValue {
+  dd?: unknown;
+  Fxl?: unknown;
+}
+
+interface GeminiPromptOutput {
+  parametros_generales?: {
+    semanasSemestre?: unknown;
+    horasContratoSemanal?: unknown;
+    totalHorasSemestre?: unknown;
+  };
+  defecto?: unknown;
+  valores_roles?: Record<string, GeminiRoleValue>;
+  otras_actividades?: {
+    preparacion_clase?: unknown;
+    asesoria_estudiantes_por_curso?: unknown;
+    lider_colectivo_semanal?: unknown;
+    participacion_colectivo_semanal?: unknown;
+    asesoria_practica_semestral?: unknown;
+    asesoria_grado_pregrado_semestral?: unknown;
+    asesoria_grado_maestria_semestral?: unknown;
+    asesoria_grado_doctorado_semestral?: unknown;
+    comite_curricular_semanal?: unknown;
+    comite_basico_facultad_semanal?: unknown;
+    lider_grupo_investigacion_semanal?: unknown;
+    lider_revista_semanal?: unknown;
+  };
+}
+
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(",", ".");
+    const direct = Number(normalized);
+    if (Number.isFinite(direct)) return direct;
+    const match = normalized.match(/-?\d+(?:\.\d+)?/);
+    if (match) {
+      const parsed = Number(match[0]);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function toPositiveOrZero(value: unknown, fallback = 0): number {
+  const n = toNumber(value);
+  if (n == null || !Number.isFinite(n)) return fallback;
+  return Math.max(0, n);
+}
+
+function roleDd(roles: Record<string, GeminiRoleValue>, key: string): number {
+  return toPositiveOrZero(roles[key]?.dd, 0);
+}
+
+function roleFxl(roles: Record<string, GeminiRoleValue>, key: string): number | undefined {
+  const n = toNumber(roles[key]?.Fxl);
+  if (n == null || !Number.isFinite(n) || n <= 0) return undefined;
+  return n;
+}
+
+function normalizeGeminiOutput(parsed: unknown): LineamientosData {
+  // If Gemini already returned the expected structure, keep it.
+  const direct = parsed as Partial<LineamientosData>;
+  if (
+    typeof direct?.horasSemestre === "number" &&
+    typeof direct?.semanasSemestre === "number" &&
+    typeof direct?.docenciaDirecta === "object" &&
+    typeof direct?.docenciaIndirecta === "object"
+  ) {
+    return direct as LineamientosData;
+  }
+
+  const data = (parsed ?? {}) as GeminiPromptOutput & { error?: string };
+  if (data.error) {
+    throw new Error(`Gemini respondió error semántico: ${data.error}`);
+  }
+
+  const roles = data.valores_roles ?? {};
+  const defecto = toPositiveOrZero(data.defecto, 0);
+
+  // In current backend schema, these two fields are "descarga" hours.
+  const directorPosgradoDd = roleDd(roles, "director_posgrado_x1");
+  const coordinadorAreaDd = roleDd(roles, "coordinador_area");
+  const directorPosgradoDescarga =
+    defecto > 0 && directorPosgradoDd > 0
+      ? Math.max(0, defecto - directorPosgradoDd)
+      : 0;
+  const coordinacionAreaDescarga =
+    defecto > 0 && coordinadorAreaDd > 0 ? Math.max(0, defecto - coordinadorAreaDd) : 0;
+
+  const semanasSemestre = toPositiveOrZero(
+    data.parametros_generales?.semanasSemestre,
+    23
+  );
+  const horasContratoSemanal = toPositiveOrZero(
+    data.parametros_generales?.horasContratoSemanal,
+    40
+  );
+  const totalHorasSemestre = toPositiveOrZero(
+    data.parametros_generales?.totalHorasSemestre,
+    semanasSemestre * horasContratoSemanal
+  );
+
+  const otras = data.otras_actividades ?? {};
+  return {
+    version: "gemini-normalized-v2",
+    horasSemestre: totalHorasSemestre,
+    semanasSemestre,
+    docenciaDirecta: {
+      sinProyecto: defecto,
+      investigadorPrincipal: roleDd(roles, "investigador_principal"),
+      coinvestigador: roleDd(roles, "co_investigador"),
+      directorPrograma: roleDd(roles, "jefes_depto_director_programa"),
+      directorPosgradoDescarga,
+      coordinacionAreaDescarga,
+      formacionDoctorado: roleDd(roles, "formacion_doctoral"),
+      formacionMaestria: roleDd(roles, "formacion_maestria"),
+    },
+    equivalenciasPosgrado: {
+      especializacion: 1.5,
+      maestria: 2.0,
+      doctorado: 2.5,
+    },
+    docenciaIndirecta: {
+      preparacionClasePorHora: toPositiveOrZero(otras.preparacion_clase, 0.5),
+      asesoriaPorCurso: toPositiveOrZero(otras.asesoria_estudiantes_por_curso, 1),
+      asesoriaTrabajoGradoPregrado: toPositiveOrZero(
+        otras.asesoria_grado_pregrado_semestral,
+        Number((15 / 23).toFixed(2))
+      ),
+      asesoriaTrabajoGradoMaestria: toPositiveOrZero(
+        otras.asesoria_grado_maestria_semestral,
+        Number((30 / 23).toFixed(2))
+      ),
+      asesoriaTrabajoGradoDoctorado: toPositiveOrZero(
+        otras.asesoria_grado_doctorado_semestral,
+        Number((45 / 23).toFixed(2))
+      ),
+      maxTrabajosGrado: 4,
+    },
+    actividadesAnexas: {
+      liderColectivo: toPositiveOrZero(otras.lider_colectivo_semanal, 4),
+      participacionColectivo: toPositiveOrZero(otras.participacion_colectivo_semanal, 2),
+      comiteCurricular: toPositiveOrZero(otras.comite_curricular_semanal, 3),
+      comiteBasicoFacultad: toPositiveOrZero(otras.comite_basico_facultad_semanal, 2),
+      liderGrupoInvestigacion: toPositiveOrZero(
+        otras.lider_grupo_investigacion_semanal,
+        4
+      ),
+      liderRevista: toPositiveOrZero(otras.lider_revista_semanal, 2),
+    },
+    registroHorasSemanales: {
+      sinProyecto: roleFxl(roles, "defecto"),
+      investigadorPrincipal: roleFxl(roles, "investigador_principal"),
+      coinvestigador: roleFxl(roles, "co_investigador"),
+      directorPrograma: roleFxl(roles, "jefes_depto_director_programa"),
+      directorPosgrado: roleFxl(roles, "director_posgrado_x1"),
+      coordinacionArea: roleFxl(roles, "coordinador_area"),
+      formacionDoctorado: roleFxl(roles, "formacion_doctoral"),
+      formacionMaestria: roleFxl(roles, "formacion_maestria"),
+    },
+    visualSettings: {
+      form_bg_color: "#00804E",
+    },
+  };
+}
+
 const PROMPT = `Eres un extractor de configuración normativa académica. Tu única tarea es leer el texto del PDF proporcionado y devolver un JSON con los valores que rigen la Agenda Docente para ese semestre específico. Los valores cambian cada semestre; NUNCA uses valores de memoria o de documentos anteriores.
 
 Sigue estos pasos en orden estricto:
@@ -340,8 +507,8 @@ export async function interpretLineamientosWithGemini(filePath: string): Promise
     const result = await model.generateContent(`${PROMPT}\n\nTexto del documento:\n${rawText}`);
     const responseText = result.response.text();
     
-    const parsed = JSON.parse(responseText) as LineamientosData;
-    return parsed;
+    const parsed = JSON.parse(responseText) as unknown;
+    return normalizeGeminiOutput(parsed);
   } catch (e) {
     console.warn("Fallo al procesar con Gemini, intentando extracción fallback", e);
     const fallback = fallbackExtract(rawText);
