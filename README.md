@@ -1,143 +1,98 @@
 # Agenda Docente UCP — Backend
 
-API REST para el Sistema de Agenda Docente de la Universidad Católica de Pereira.
+API REST del Sistema de Agenda Docente de la Universidad Católica de Pereira.
 
-**Stack:** Node.js 20 · Express 4 · TypeScript 5 · PostgreSQL 15 · JWT · Multer · Nodemailer · Google Gemini (lineamientos PDF)
+El backend centraliza la lógica de negocio, autenticación, gestión de agendas, persistencia de datos y comunicación con servicios externos utilizados por la aplicación.
 
-> El frontend vive en un repositorio separado: `agenda-ucp-frontend`.
+> El frontend se encuentra en un repositorio independiente: **`agenda-ucp-frontend`**.
 
----
+## Stack tecnológico
 
-## Quick start (Docker — recomendado)
+### Backend
 
-```bash
-git clone <url-de-este-repo>
-cd agenda-ucp-backend
-cp .env.example .env       # editar con tus credenciales reales
-docker compose up --build -d
-curl http://localhost:4000/api/health
-```
+- Node.js 20
+- Express 4
+- TypeScript 5
 
-Esto levanta:
-- **Postgres 15** en `localhost:5432` (usuario `admin`, bd `agendadocentedb`).
-- **API Express** en `http://localhost:4000/api`.
+### Base de datos
 
-La primera vez que arranca, el contenedor de Postgres ejecuta automáticamente
-`migrations/001_initial_schema.sql` y carga datos semilla.
+- PostgreSQL 15
+- Migraciones SQL
 
-Para reinicializar desde cero:
-```bash
-docker compose down -v && docker compose up --build -d
-```
+### Autenticación y seguridad
 
----
+- JWT
+- Middleware de autenticación
+- Control de acceso según roles
+- CORS
 
-## Quick start (sin Docker — desarrollo local)
+### Gestión de archivos y documentos
 
-Requisitos: Node.js 20+ y un Postgres 15 corriendo.
+- Multer
+- Procesamiento de documentos PDF
 
-```bash
-cp .env.example .env
-npm install
-npm run dev      # ts-node-dev con autoreload
-# build de producción:
-npm run build
-npm start
-```
+### Inteligencia artificial
 
----
+- Google Gemini API
+- Interpretación de documentos PDF de lineamientos
+- Extracción de reglas y configuraciones
+- Procesamiento mediante parser con mecanismo de fallback
 
-## Variables de entorno
+### Servicios
 
-Ver `.env.example` para la lista completa. Las críticas:
+- Nodemailer para correos transaccionales
 
-| Variable        | Descripción                                          |
-| --------------- | ---------------------------------------------------- |
-| `PORT`          | Puerto del API (default 4000)                        |
-| `DATABASE_URL`  | Cadena de conexión a Postgres                        |
-| `JWT_SECRET`    | Secreto para firmar tokens — **cambiar en prod**     |
-| `CORS_ORIGIN`   | Orígenes permitidos (separados por coma)             |
-| `FRONTEND_URL`  | URL pública del frontend (links de recuperación)     |
-| `UPLOADS_DIR`   | Carpeta de uploads de multer                         |
-| `SMTP_*`        | Credenciales SMTP para correos transaccionales       |
-| `GEMINI_API_KEY`| API key de Google Gemini (`gemini-1.5-flash` en `/lineamientos-documents/upload`) |
+### Infraestructura
 
----
+- Docker
+- Docker Compose
+- Render
 
-## Endpoints principales
+## Funcionalidades principales
 
-```
-GET    /api/health
-POST   /api/auth/login
-POST   /api/auth/forgot-password
-POST   /api/auth/verify-password         (auth)
-POST   /api/auth/change-password         (auth)
-GET    /api/auth/me                      (auth)
+- Autenticación y gestión de sesiones mediante JWT.
+- Recuperación y cambio de contraseña.
+- Gestión de usuarios y roles.
+- Gestión de asignaturas.
+- Creación, edición y consulta de agendas docentes.
+- Gestión del flujo de revisión y aprobación de agendas.
+- Gestión de comentarios y observaciones.
+- Gestión de jerarquías de usuarios.
+- Registro de auditoría.
+- Gestión de configuraciones docentes.
+- Gestión de reglas de recomendación.
+- Gestión de configuraciones del sistema.
+- Carga y procesamiento de documentos PDF.
+- Interpretación de lineamientos mediante Google Gemini.
+- Extracción y clasificación de reglas a partir de documentos.
+- Historial y trazabilidad de documentos de lineamientos.
 
-# Catálogos (read-only)
-GET    /api/roles | /api/states | /api/semester | /api/faculties
-GET    /api/education-levels | /api/professional-careers
-GET    /api/indirect-teaching | /api/investigations | /api/social-projects
-GET    /api/teacher-training | /api/degree-works
-GET    /api/complementary-activities | /api/administrative-activities
-GET    /api/academic-practices
+## Integración con inteligencia artificial
 
-# CRUD (auth)
-GET|POST|PUT|DELETE  /api/subjects
-GET|POST|PUT|DELETE  /api/agendas
-GET|POST|PUT         /api/agenda-views
-GET|POST|DELETE      /api/agenda-comments
-GET|POST|DELETE      /api/user-hierarchy
-GET|POST             /api/docente-config
-GET|PUT              /api/system-settings/:key
-GET|POST|PUT|DELETE  /api/recommendation-rules
-POST                 /api/recommendation-rules/reset
-GET                  /api/users | /api/users/by-cc/:cc
-GET                  /api/audit-log
+El sistema incorpora un módulo para la gestión e interpretación de documentos PDF que contienen lineamientos institucionales.
 
-# Subida de archivos (auth)
-POST   /api/upload/parse-document
-```
+El flujo general es:
 
-Todas las rutas (excepto `/health`, `/auth/login`, `/auth/forgot-password`)
-requieren el header `Authorization: Bearer <jwt>`.
-
----
-
-## Estructura
-
-```
-backend/
-├── src/
-│   ├── index.ts              # Entry point Express
-│   ├── db.ts                 # Pool de pg
-│   ├── middleware/           # auth, logger, error-handler
-│   ├── routes/               # endpoints por dominio
-│   ├── services/             # email
-│   └── types/
-├── migrations/
-│   └── 001_initial_schema.sql
-├── Dockerfile
-├── docker-compose.yml
-├── package.json
-└── tsconfig.json
-```
-
----
-
-## Despliegue
-
-1. Copiar el repo al servidor.
-2. Configurar `.env` con credenciales reales (Postgres, JWT, SMTP).
-3. `docker compose up --build -d`.
-4. Verificar `curl http://localhost:4000/api/health`.
-5. Configurar el frontend con `VITE_API_URL=http://<IP-SERVIDOR>:4000/api`.
-
-Para reverse proxy (nginx/Apache) delante del backend, ver
-`FRONTEND_URL` y `CORS_ORIGIN`.
-
----
-
-## Licencia
-
-Uso interno UCP.
+```text
+PDF de lineamientos
+        │
+        ▼
+   Backend Express
+        │
+        ▼
+Extracción de texto
+        │
+        ▼
+   Google Gemini
+        │
+        ▼
+Interpretación de lineamientos
+        │
+        ▼
+Extracción de reglas
+        │
+        ▼
+Normalización y validación
+        │
+        ▼
+Persistencia en PostgreSQL
